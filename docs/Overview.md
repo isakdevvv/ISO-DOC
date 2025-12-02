@@ -29,6 +29,8 @@
   2) LLM evaluates each requirement vs evidence, producing `ComplianceResult` rows and `ComplianceReport` with `overallScore`.
 - **Gap analysis**
   - Uses `IsoStandard.requiredDocuments` plus user documents to identify missing/partial coverage (see `ComplianceService.runGapAnalysis`).
+- **RAG retrieval**
+  - `RagService` now blends pgvector similarity with PostgreSQL full-text search to surface both semantic and exact matches (see `docs/VercelPostgres.md` for tuning).
 
 ## Runtime
 - Backend listens on `PORT` (default `4000`); CORS enabled; Vercel handler exported for serverless.

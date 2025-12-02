@@ -1,12 +1,28 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { JwtService } from '@nestjs/jwt';
 import { AuthService } from './auth.service';
+import { PrismaService } from '@/prisma.service';
+
+const mockJwtService = {
+  sign: jest.fn(),
+};
+
+const mockPrisma = {
+  tenant: {
+    findFirst: jest.fn().mockResolvedValue({ id: 'tenant-1' }),
+  },
+};
 
 describe('AuthService', () => {
   let service: AuthService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [AuthService],
+      providers: [
+        AuthService,
+        { provide: JwtService, useValue: mockJwtService },
+        { provide: PrismaService, useValue: mockPrisma },
+      ],
     }).compile();
 
     service = module.get<AuthService>(AuthService);

@@ -64,3 +64,20 @@ input::placeholder,
 textarea::placeholder {
   color: #6b7280;
 }
+
+/* Hide CopilotKit Branding - Aggressive */
+.copilot-kit-powered-by,
+[class*="copilotKitPoweredBy"],
+a[href*="copilotkit.ai"],
+.copilotKitPoweredBy,
+div[class*="PoweredBy"],
+a[href*="copilotkit"],
+.poweredBy,
+p[class*="poweredBy"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  height: 0 !important;
+  width: 0 !important;
+  pointer-events: none !important;
+}

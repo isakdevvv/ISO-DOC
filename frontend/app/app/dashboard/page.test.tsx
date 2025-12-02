@@ -1,221 +1,172 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import Dashboard from './page';
-import { fetchDocuments, uploadDocuments, commitDocuments, deleteDocument, fetchIsoStandards, runComplianceCheck, fetchDashboardStats, searchDocuments, fetchNotifications, markNotificationRead, markAllNotificationsRead } from '@/lib/api';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
+import Dashboard from './page';
+import {
+    fetchNodes,
+    fetchRuleSets,
+    runRuleEngine,
+    fetchLatestRequirements,
+    fetchRuleConflicts,
+    fetchTemplates,
+    deleteTemplate,
+    createTemplate,
+    updateTemplate,
+    fetchProjects,
+    fetchTasks,
+} from '@/lib/api';
+import { CopilotKit } from '@copilotkit/react-core';
 
-// Mock the API module
+const mockPush = vi.fn();
+const mockReplace = vi.fn();
+const mockSearchParams = {
+    get: vi.fn(() => null),
+};
+
 vi.mock('@/lib/api', () => ({
-    fetchDocuments: vi.fn(),
-    uploadDocuments: vi.fn(),
-    commitDocuments: vi.fn(),
-    deleteDocument: vi.fn(),
-    fetchIsoStandards: vi.fn(),
-    runComplianceCheck: vi.fn(),
-    fetchDashboardStats: vi.fn(),
-    searchDocuments: vi.fn(),
-    fetchNotifications: vi.fn(),
-    markNotificationRead: vi.fn(),
-    markAllNotificationsRead: vi.fn(),
+    fetchNodes: vi.fn(),
+    fetchRuleSets: vi.fn(),
+    runRuleEngine: vi.fn(),
+    fetchLatestRequirements: vi.fn(),
+    fetchRuleConflicts: vi.fn(),
+    fetchTemplates: vi.fn(),
+    deleteTemplate: vi.fn(),
+    createTemplate: vi.fn(),
+    updateTemplate: vi.fn(),
+    fetchProjects: vi.fn(),
+    fetchTasks: vi.fn(),
 }));
 
-// Mock useRouter and usePathname
-const mockPush = vi.fn();
 vi.mock('next/navigation', () => ({
-    useRouter: () => ({ push: mockPush }),
+    useRouter: () => ({ push: mockPush, replace: mockReplace }),
     usePathname: () => '/app/dashboard',
+    useSearchParams: () => mockSearchParams,
 }));
 
 describe('Dashboard Page', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mockSearchParams.get.mockReturnValue(null);
+        vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+        (fetchNodes as any).mockResolvedValue([]);
+        (fetchTasks as any).mockResolvedValue([]);
+        (fetchProjects as any).mockResolvedValue([]);
+        (fetchTemplates as any).mockResolvedValue([]);
     });
 
-    it('renders documents and standards', async () => {
-        const mockDocuments = [
-            { id: '1', title: 'Doc 1', status: 'PENDING', createdAt: '2023-01-01' },
-        ];
-        const mockStandards = [
-            { id: 'iso-1', title: 'ISO 27001', standardId: 'ISO 27001:2022' },
-        ];
-
-        (fetchDocuments as any).mockResolvedValue(mockDocuments);
-        (fetchIsoStandards as any).mockResolvedValue(mockStandards);
-
-        render(<Dashboard />);
-
-        await waitFor(() => {
-            expect(screen.getByText('Doc 1')).toBeDefined();
-        });
-
-        expect(fetchDocuments).toHaveBeenCalled();
-        expect(fetchIsoStandards).toHaveBeenCalled();
+    afterEach(() => {
+        (window.alert as any).mockRestore?.();
     });
 
-    it('renders dashboard widgets', async () => {
-        const mockStats = {
-            totalDocuments: 10,
-            analyzedDocuments: 5,
-            averageComplianceScore: 85,
-            recentActivity: [
-                { id: '1', title: 'Doc 1', status: 'ANALYZED', updatedAt: '2023-01-01' }
-            ]
+    const renderWithCopilot = () => render(
+        <CopilotKit runtimeUrl="/api/copilot">
+            <Dashboard />
+        </CopilotKit>
+    );
+
+    it('renders compliance audit inputs with fetched documents and standards', async () => {
+        mockSearchParams.get.mockReturnValue('compliance');
+        const mockRequirements: any = {
+            id: 'req-1',
+            projectId: 'default-project-id',
+            scope: 'FULL',
+            version: 1,
+            payload: {
+                requiredDocuments: [{ code: 'FDV', title: 'FDV Manual', severity: 'HIGH' }],
+                requiredFields: [{ path: 'fdv.title', description: 'Document title' }],
+            },
+            warnings: [{ message: 'Missing PS data' }],
+            createdAt: new Date().toISOString(),
         };
+        (fetchNodes as any).mockResolvedValue([
+            { id: '1', title: 'FDV', status: 'PENDING_REVIEW', type: 'FDV', tenantId: '', projectId: '', createdAt: '', updatedAt: '' },
+        ]);
+        (fetchRuleSets as any).mockResolvedValue([
+            { id: 'rs-1', title: 'ISO 27001', code: 'ISO27001', version: '1.0', description: '', scope: 'GLOBAL', isActive: true },
+        ]);
+        (fetchLatestRequirements as any).mockResolvedValue(mockRequirements);
+        (fetchRuleConflicts as any).mockResolvedValue([]);
 
-        (fetchDocuments as any).mockResolvedValue([]);
-        (fetchIsoStandards as any).mockResolvedValue([]);
-        (fetchDashboardStats as any).mockResolvedValue(mockStats);
+        renderWithCopilot();
 
-        render(<Dashboard />);
+        expect(await screen.findByText('Gap & Requirements Summary')).toBeDefined();
+        expect(screen.getByText('FDV Manual')).toBeDefined();
+    });
+
+    it('runs compliance audit when button is clicked', async () => {
+        mockSearchParams.get.mockReturnValue('compliance');
+        (fetchNodes as any).mockResolvedValue([]);
+        (fetchRuleSets as any).mockResolvedValue([
+            { id: 'rs-1', title: 'ISO 27001', code: 'ISO27001', version: '1.0', description: '', scope: 'GLOBAL', isActive: true },
+        ]);
+        (fetchLatestRequirements as any).mockResolvedValue(null);
+        (fetchRuleConflicts as any).mockResolvedValue([]);
+        (runRuleEngine as any).mockResolvedValue({ evaluationId: 'eval-1' });
+        vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+
+        renderWithCopilot();
+
+        const runButton = await screen.findByText('Run Compliance Audit');
+        fireEvent.click(runButton);
 
         await waitFor(() => {
-            expect(screen.getByText('85%')).toBeDefined();
-            expect(screen.getByText('Total Documents')).toBeDefined();
-            expect(screen.getByText('Recent Activity')).toBeDefined();
+            expect(runRuleEngine).toHaveBeenCalledWith('default-project-id', { ruleSetIds: ['rs-1'] });
         });
     });
 
-    it('opens analysis modal and runs check', async () => {
-        const mockDocuments = [
-            { id: '1', title: 'Doc 1', status: 'PENDING', createdAt: '2023-01-01' },
-        ];
-        const mockStandards = [
-            { id: 'iso-1', title: 'ISO 27001', standardId: 'ISO 27001:2022' },
-        ];
+    it('falls back to compliance workspace when gap-analysis tab is requested', async () => {
+        mockSearchParams.get.mockReturnValue('gap-analysis');
+        (fetchNodes as any).mockResolvedValue([]);
+        (fetchRuleSets as any).mockResolvedValue([]);
+        (fetchLatestRequirements as any).mockResolvedValue(null);
+        (fetchRuleConflicts as any).mockResolvedValue([]);
 
-        (fetchDocuments as any).mockResolvedValue(mockDocuments);
-        (fetchIsoStandards as any).mockResolvedValue(mockStandards);
-        (runComplianceCheck as any).mockResolvedValue({ id: 'report-1' });
+        renderWithCopilot();
 
-        render(<Dashboard />);
-
-        await waitFor(() => {
-            expect(screen.getByTitle('Analyze')).toBeDefined();
-        });
-
-        // Click Analyze
-        fireEvent.click(screen.getByTitle('Analyze'));
-
-        // Check modal
-        expect(screen.getByText('Run Compliance Analysis')).toBeDefined();
-        expect(screen.getByText('ISO 27001 (ISO 27001:2022)')).toBeDefined();
-
-        // Click Run
-        fireEvent.click(screen.getByText('Run Analysis'));
-
-        await waitFor(() => {
-            expect(runComplianceCheck).toHaveBeenCalledWith('1', 'iso-1');
-            expect(mockPush).toHaveBeenCalledWith('/app/reports/report-1');
-        });
+        expect(await screen.findByText('Compliance Workspace')).toBeDefined();
     });
 
-    it('shows staged documents and allows approval', async () => {
-        const mockDocuments = [
-            { id: '1', title: 'Doc 1', status: 'STAGED', createdAt: '2023-01-01' },
-        ];
-        (fetchDocuments as any).mockResolvedValue(mockDocuments);
-        (fetchIsoStandards as any).mockResolvedValue([]);
-        (fetchDashboardStats as any).mockResolvedValue({ recentActivity: [] });
+    it('respects the templates tab query parameter', async () => {
+        mockSearchParams.get.mockReturnValue('templates');
+        (fetchNodes as any).mockResolvedValue([]);
+        (fetchRuleSets as any).mockResolvedValue([]);
+        (fetchLatestRequirements as any).mockResolvedValue(null);
+        (fetchRuleConflicts as any).mockResolvedValue([]);
+        (fetchTemplates as any).mockResolvedValue([]);
 
-        render(<Dashboard />);
+        renderWithCopilot();
 
-        expect(fetchDocuments).toHaveBeenCalled();
-        expect(await screen.findByText('Review Uploads', {}, { timeout: 3000 })).toBeDefined();
-        expect(screen.getByText('Doc 1')).toBeDefined();
-        expect(screen.getByText('Ready for Approval')).toBeDefined();
-
-        // Click Approve
-        fireEvent.click(screen.getByText('Approve All'));
-
-        await waitFor(() => {
-            expect(commitDocuments).toHaveBeenCalledWith(['1']);
-        });
+        expect(await screen.findByText('Loading templates...')).toBeDefined();
     });
 
-    it('allows rejecting staged documents', async () => {
-        const mockDocuments = [
-            { id: '1', title: 'Doc 1', status: 'STAGED', createdAt: '2023-01-01' },
-        ];
-        (fetchDocuments as any).mockResolvedValue(mockDocuments);
-        (fetchIsoStandards as any).mockResolvedValue([]);
-        (fetchDashboardStats as any).mockResolvedValue({ recentActivity: [] });
+    it('shows notification dropdown when the bell icon is clicked', async () => {
+        (fetchNodes as any).mockResolvedValue([]);
+        (fetchRuleSets as any).mockResolvedValue([]);
+        (fetchLatestRequirements as any).mockResolvedValue(null);
+        (fetchRuleConflicts as any).mockResolvedValue([]);
 
-        // Mock confirm
-        window.confirm = vi.fn(() => true);
+        renderWithCopilot();
 
-        render(<Dashboard />);
+        expect(await screen.findByText('Admin Control Tower')).toBeDefined();
+        fireEvent.click(screen.getByRole('button', { name: /🔔/ }));
 
-        expect(await screen.findByText('Review Uploads', {}, { timeout: 3000 })).toBeDefined();
-
-        // Click Reject
-        fireEvent.click(screen.getByTitle('Reject / Delete'));
-
-        await waitFor(() => {
-            expect(deleteDocument).toHaveBeenCalledWith('1');
-        });
+        expect(screen.getByText('No notifications')).toBeDefined();
     });
 
-    it('shows notifications', async () => {
-        const mockNotifications = [
-            { id: '1', title: 'Analysis Complete', message: 'Doc 1 analyzed', type: 'SUCCESS', read: false, createdAt: '2023-01-01' }
-        ];
-        (fetchDocuments as any).mockResolvedValue([]);
-        (fetchIsoStandards as any).mockResolvedValue([]);
-        (fetchDashboardStats as any).mockResolvedValue({});
-        (fetchNotifications as any).mockResolvedValue(mockNotifications);
+    it('displays upload progress when a batch upload starts', async () => {
+        (fetchNodes as any).mockResolvedValue([]);
+        (fetchRuleSets as any).mockResolvedValue([]);
+        (fetchLatestRequirements as any).mockResolvedValue(null);
+        (fetchRuleConflicts as any).mockResolvedValue([]);
 
-        render(<Dashboard />);
+        renderWithCopilot();
 
-        await waitFor(() => {
-            expect(screen.getByText('1')).toBeDefined(); // Unread count badge
+        act(() => {
+            window.dispatchEvent(new CustomEvent('batch-upload-start', { detail: 'batch-1' }));
         });
 
-        // Click Bell
-        fireEvent.click(screen.getByText('🔔'));
-
-        expect(screen.getByText('Analysis Complete')).toBeDefined();
-        expect(screen.getByText('Doc 1 analyzed')).toBeDefined();
-    });
-
-    it('shows upload progress', async () => {
-        (fetchDocuments as any).mockResolvedValue([]);
-        (fetchIsoStandards as any).mockResolvedValue([]);
-        (fetchDashboardStats as any).mockResolvedValue({});
-        (fetchNotifications as any).mockResolvedValue([]);
-        (uploadDocuments as any).mockResolvedValue({ batchId: 'batch-1', documents: [] });
-
-        // Mock fetchBatchProgress
-        const mockProgress = { total: 10, processed: 5, failed: 0, pending: 5 };
-        (global.fetch as any) = vi.fn((url) => {
-            if (url.includes('/progress')) {
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve(mockProgress)
-                });
-            }
-            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
-        });
-
-        render(<Dashboard />);
-
-        // Trigger upload
-        const file = new File(['hello'], 'hello.png', { type: 'image/png' });
-        const input = screen.getByLabelText('Upload New') as HTMLInputElement;
-        Object.defineProperty(input, 'files', { value: [file] });
-        fireEvent.change(input);
-
         await waitFor(() => {
-            expect(uploadDocuments).toHaveBeenCalled();
-        });
-
-        // Check for progress bar in Header (it listens to window event)
-        // Note: We might need to wait for the poll interval or manually trigger the event if the component is isolated.
-        // Since Header is rendered inside Dashboard, it should receive the event.
-
-        await waitFor(() => {
-            expect(screen.getByText('Uploading... 5 of 10')).toBeDefined();
-            expect(screen.getByText('50%')).toBeDefined();
+            expect(screen.getByText(/Uploading\.\.\. \d+ of \d+/)).toBeDefined();
+            expect(screen.getByText(/\d+%/)).toBeDefined();
         });
     });
 });
-
-

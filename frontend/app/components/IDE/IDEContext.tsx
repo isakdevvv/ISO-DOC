@@ -1,24 +1,16 @@
 'use client';
 
 import React, { createContext, useContext, useState, ReactNode } from 'react';
-
-export interface Document {
-    id: string;
-    title: string;
-    status: string;
-    createdAt: string;
-    batchId?: string | null;
-    docType?: string | null;
-}
+import { Node } from '@/lib/api';
 
 interface IDEContextType {
-    files: Document[];
-    setFiles: (files: Document[]) => void;
-    openFiles: string[]; // IDs of open files
-    activeFileId: string | null;
-    openFile: (id: string) => void;
-    closeFile: (id: string) => void;
-    setActiveFile: (id: string) => void;
+    nodes: Node[];
+    setNodes: (nodes: Node[]) => void;
+    openNodes: string[]; // IDs of open nodes
+    activeNodeId: string | null;
+    openNode: (id: string) => void;
+    closeNode: (id: string) => void;
+    setActiveNode: (id: string) => void;
     sidebarVisible: boolean;
     toggleSidebar: () => void;
     rightPanelVisible: boolean;
@@ -28,31 +20,31 @@ interface IDEContextType {
 const IDEContext = createContext<IDEContextType | undefined>(undefined);
 
 export function IDEProvider({ children }: { children: ReactNode }) {
-    const [files, setFiles] = useState<Document[]>([]);
-    const [openFiles, setOpenFiles] = useState<string[]>([]);
-    const [activeFileId, setActiveFileId] = useState<string | null>(null);
+    const [nodes, setNodes] = useState<Node[]>([]);
+    const [openNodes, setOpenNodes] = useState<string[]>([]);
+    const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
     const [sidebarVisible, setSidebarVisible] = useState(true);
     const [rightPanelVisible, setRightPanelVisible] = useState(true);
 
-    const openFile = (id: string) => {
-        if (!openFiles.includes(id)) {
-            setOpenFiles([...openFiles, id]);
+    const openNode = (id: string) => {
+        if (!openNodes.includes(id)) {
+            setOpenNodes([...openNodes, id]);
         }
-        setActiveFileId(id);
+        setActiveNodeId(id);
     };
 
-    const closeFile = (id: string) => {
-        const newOpenFiles = openFiles.filter(fileId => fileId !== id);
-        setOpenFiles(newOpenFiles);
+    const closeNode = (id: string) => {
+        const newOpenNodes = openNodes.filter(nodeId => nodeId !== id);
+        setOpenNodes(newOpenNodes);
 
-        if (activeFileId === id) {
-            // If we closed the active file, switch to the last one or null
-            setActiveFileId(newOpenFiles.length > 0 ? newOpenFiles[newOpenFiles.length - 1] : null);
+        if (activeNodeId === id) {
+            // If we closed the active node, switch to the last one or null
+            setActiveNodeId(newOpenNodes.length > 0 ? newOpenNodes[newOpenNodes.length - 1] : null);
         }
     };
 
-    const setActiveFile = (id: string) => {
-        setActiveFileId(id);
+    const setActiveNode = (id: string) => {
+        setActiveNodeId(id);
     };
 
     const toggleSidebar = () => setSidebarVisible(!sidebarVisible);
@@ -60,13 +52,13 @@ export function IDEProvider({ children }: { children: ReactNode }) {
 
     return (
         <IDEContext.Provider value={{
-            files,
-            setFiles,
-            openFiles,
-            activeFileId,
-            openFile,
-            closeFile,
-            setActiveFile,
+            nodes,
+            setNodes,
+            openNodes,
+            activeNodeId,
+            openNode,
+            closeNode,
+            setActiveNode,
             sidebarVisible,
             toggleSidebar,
             rightPanelVisible,
@@ -84,3 +76,4 @@ export function useIDE() {
     }
     return context;
 }
+

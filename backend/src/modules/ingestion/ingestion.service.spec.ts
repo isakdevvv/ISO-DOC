@@ -1,166 +1,184 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { IngestionJobType } from '@prisma/client';
+
+import { StorageService } from '@/common/storage/storage.service';
+import { PrismaService } from '@/prisma.service';
+import { IngestionQueueService } from './ingestion.queue';
 import { IngestionService } from './ingestion.service';
-import { PrismaService } from '../../prisma.service';
-import * as fs from 'fs';
 
-// Mock dependencies
-jest.mock('fs');
-jest.mock('pdf-parse', () => {
-    return jest.fn().mockResolvedValue({ text: 'Mock PDF content' });
-});
-
-jest.mock('mammoth', () => ({
-    extractRawText: jest.fn().mockResolvedValue({ value: 'Docx Content' }),
+jest.mock('fs/promises', () => ({
+    readFile: jest.fn().mockResolvedValue(Buffer.from('file-bytes')),
+    unlink: jest.fn().mockResolvedValue(undefined),
 }));
 
-jest.mock('@langchain/openai', () => {
-    return {
-        OpenAIEmbeddings: jest.fn().mockImplementation(() => ({
-            embedQuery: jest.fn().mockResolvedValue([0.1, 0.2, 0.3]),
-        })),
-        ChatOpenAI: jest.fn().mockImplementation(() => ({
-            invoke: jest.fn().mockResolvedValue({
-                content: JSON.stringify({
-                    author: 'Test Author',
-                    summary: 'Test Summary',
-                    docType: 'Policy',
-                    publicationDate: '2023-01-01',
-                }),
-            }),
-        })),
-    };
-});
-
-jest.mock('@langchain/textsplitters', () => {
-    return {
-        RecursiveCharacterTextSplitter: jest.fn().mockImplementation(() => ({
-            createDocuments: jest.fn().mockResolvedValue([
-                { pageContent: 'Chunk 1', metadata: {} },
-                { pageContent: 'Chunk 2', metadata: {} },
-            ]),
-        })),
-    };
-});
+const mockStorageService = {
+    buildStorageKey: jest.fn((bucket: string, objectKey: string) => `local://${bucket}/${objectKey}`),
+    parseStorageKey: jest.fn(() => ({ driver: 'local', bucket: 'original-files', objectKey: 'tenant/project/file.pdf', raw: '' })),
+    uploadObject: jest.fn().mockResolvedValue(undefined),
+    getObjectStream: jest.fn().mockResolvedValue({
+        stream: { pipe: jest.fn() },
+        mimeType: 'application/pdf',
+    }),
+};
 
 const mockPrismaService = {
-    document: {
+    project: {
         findUnique: jest.fn(),
-        update: jest.fn(),
     },
-    $executeRaw: jest.fn(),
+    node: {
+        findUnique: jest.fn(),
+    },
+    file: {
+        create: jest.fn(),
+        update: jest.fn(),
+        findUnique: jest.fn(),
+        findMany: jest.fn(),
+    },
+    ingestionJob: {
+        create: jest.fn(),
+        update: jest.fn(),
+        updateMany: jest.fn(),
+        findFirst: jest.fn(),
+    },
+};
+
+const mockQueue = {
+    enqueueNormalizeJob: jest.fn().mockResolvedValue(undefined),
 };
 
 describe('IngestionService', () => {
     let service: IngestionService;
-    let prisma: PrismaService;
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 IngestionService,
                 { provide: PrismaService, useValue: mockPrismaService },
+                { provide: StorageService, useValue: mockStorageService },
+                { provide: IngestionQueueService, useValue: mockQueue },
             ],
         }).compile();
 
-        service = module.get<IngestionService>(IngestionService);
-        prisma = module.get<PrismaService>(PrismaService);
-    });
+        service = module.get(IngestionService);
 
-    afterEach(() => {
         jest.clearAllMocks();
     });
 
-    it('should be defined', () => {
-        expect(service).toBeDefined();
+    it('throws when no files are provided', async () => {
+        await expect(service.ingestFiles({ files: [] })).rejects.toThrow('At least one file must be provided');
     });
 
-    describe('ingestDocument', () => {
-        it('should successfully ingest a document', async () => {
-            const documentId = 'doc-1';
-            const mockDocument = {
-                id: documentId,
-                filePath: '/path/to/doc.pdf',
-            };
+    it('resolves tenant from project when ingesting files', async () => {
+        mockPrismaService.project.findUnique.mockResolvedValue({ id: 'proj-1', tenantId: 'tenant-1' });
+        mockPrismaService.file.create.mockResolvedValue({
+            id: 'file-1',
+            tenantId: 'tenant-1',
+            storageKey: 'local://original-files/tenant/file.pdf',
+            fileName: 'demo.pdf',
+        });
+        mockPrismaService.file.findUnique.mockResolvedValue({
+            id: 'file-1',
+            variants: [],
+        });
+        mockPrismaService.ingestionJob.create.mockResolvedValue({ id: 'job-1' });
 
-            mockPrismaService.document.findUnique.mockResolvedValue(mockDocument);
-            (fs.readFileSync as jest.Mock).mockReturnValue(Buffer.from('dummy'));
+        const file = {
+            originalname: 'fdv.pdf',
+            mimetype: 'application/pdf',
+            size: 123,
+            path: 'tmp/fdv.pdf',
+        } as Express.Multer.File;
 
-            await service.ingestDocument(documentId);
-
-            // Verify Prisma calls
-            expect(prisma.document.findUnique).toHaveBeenCalledWith({ where: { id: documentId } });
-            expect(prisma.$executeRaw).toHaveBeenCalledTimes(2); // 2 chunks
-            expect(prisma.document.update).toHaveBeenCalledWith({
-                where: { id: documentId },
-                data: expect.objectContaining({
-                    status: 'ANALYZED',
-                    author: 'Test Author',
-                }),
-            });
+        const result = await service.ingestFiles({
+            projectId: 'proj-1',
+            files: [file],
         });
 
-        it('should handle document not found', async () => {
-            mockPrismaService.document.findUnique.mockResolvedValue(null);
-            await service.ingestDocument('doc-1');
-            expect(prisma.document.update).not.toHaveBeenCalled();
+        expect(mockPrismaService.project.findUnique).toHaveBeenCalledWith({ where: { id: 'proj-1' }, select: { id: true, tenantId: true } });
+        expect(mockStorageService.uploadObject).toHaveBeenCalled();
+        expect(mockQueue.enqueueNormalizeJob).toHaveBeenCalledWith('file-1');
+        expect(result.files).toHaveLength(1);
+    });
+
+    it('creates upload request metadata', async () => {
+        mockPrismaService.project.findUnique.mockResolvedValue({ id: 'proj-1', tenantId: 'tenant-1' });
+        mockPrismaService.file.create.mockResolvedValue({
+            id: 'file-req',
+            tenantId: 'tenant-1',
+            checksum: 'abc',
+            storageKey: 'local://original-files/tenant/file.pdf',
+        });
+        mockPrismaService.ingestionJob.create.mockResolvedValue({ id: 'job-req' });
+
+        const response = await service.requestUpload({
+            projectId: 'proj-1',
+            fileName: 'report.pdf',
+            mimeType: 'application/pdf',
+            size: 100,
+            checksum: 'abc',
         });
 
-        it('should handle errors during ingestion', async () => {
-            const documentId = 'doc-1';
-            mockPrismaService.document.findUnique.mockResolvedValue({ id: documentId, filePath: 'path.pdf' });
-            (fs.readFileSync as jest.Mock).mockImplementation(() => {
-                throw new Error('File read error');
-            });
+        expect(response.fileId).toBe('file-req');
+        expect(response.uploadUrl).toBe('/ingestion/upload/file-req/content');
+        expect(mockPrismaService.ingestionJob.update).toHaveBeenCalledWith({
+            where: { id: 'job-req' },
+            data: {
+                metadata: {
+                    phase: 'WAITING_UPLOAD',
+                    uploadUrl: '/ingestion/upload/file-req/content',
+                },
+            },
+        });
+    });
 
-            await service.ingestDocument(documentId);
+    it('lists project files', async () => {
+        mockPrismaService.project.findUnique.mockResolvedValue({ id: 'proj-1' });
+        mockPrismaService.file.findMany.mockResolvedValue([{ id: 'file-1' }]);
 
-            expect(prisma.document.update).toHaveBeenCalledWith({
-                where: { id: documentId },
-                data: { status: 'ERROR' },
-            });
+        const files = await service.listProjectFiles('proj-1');
+
+        expect(files).toEqual([{ id: 'file-1' }]);
+        expect(mockPrismaService.file.findMany).toHaveBeenCalledWith({
+            where: { projectId: 'proj-1' },
+            orderBy: { createdAt: 'desc' },
+            include: { variants: true },
+        });
+    });
+
+    it('fails upload when checksum does not match', async () => {
+        mockPrismaService.file.findUnique.mockResolvedValueOnce({
+            id: 'file-1',
+            tenantId: 'tenant-1',
+            projectId: 'proj-1',
+            storageKey: 'local://original-files/tenant-1/demo.pdf',
+            fileName: 'demo.pdf',
+            mimeType: 'application/pdf',
+            checksum: 'expected-checksum',
+            metadata: null,
         });
 
-        it('should ingest JSON files', async () => {
-            const documentId = 'doc-json';
-            mockPrismaService.document.findUnique.mockResolvedValue({ id: documentId, filePath: 'test.json' });
-            (fs.readFileSync as jest.Mock).mockReturnValue(Buffer.from(JSON.stringify({ key: 'value' })));
+        const file = {
+            originalname: 'fdv.pdf',
+            mimetype: 'application/pdf',
+            buffer: Buffer.from('file-bytes'),
+        } as Express.Multer.File;
 
-            await service.ingestDocument(documentId);
+        await expect(service.receiveUploadedFile('file-1', file)).rejects.toThrow('Checksum mismatch');
 
-            expect(prisma.$executeRaw).toHaveBeenCalled();
+        expect(mockStorageService.uploadObject).not.toHaveBeenCalled();
+        expect(mockQueue.enqueueNormalizeJob).not.toHaveBeenCalled();
+        expect(mockPrismaService.ingestionJob.updateMany).toHaveBeenCalledWith({
+            where: { fileId: 'file-1', jobType: IngestionJobType.NORMALIZE_FILE },
+            data: expect.objectContaining({
+                status: 'FAILED',
+                lastError: 'CHECKSUM_MISMATCH',
+            }),
         });
-
-        it('should ingest TXT files', async () => {
-            const documentId = 'doc-txt';
-            mockPrismaService.document.findUnique.mockResolvedValue({ id: documentId, filePath: 'test.txt' });
-            (fs.readFileSync as jest.Mock).mockReturnValue(Buffer.from('Plain text content'));
-
-            await service.ingestDocument(documentId);
-
-            expect(prisma.$executeRaw).toHaveBeenCalled();
-        });
-
-        it('should ingest DOCX files', async () => {
-            const documentId = 'doc-docx';
-            mockPrismaService.document.findUnique.mockResolvedValue({ id: documentId, filePath: 'test.docx' });
-            (fs.readFileSync as jest.Mock).mockReturnValue(Buffer.from('dummy docx'));
-
-            await service.ingestDocument(documentId);
-
-            expect(prisma.$executeRaw).toHaveBeenCalled();
-        });
-
-        it('should throw error for unsupported file types', async () => {
-            const documentId = 'doc-unknown';
-            mockPrismaService.document.findUnique.mockResolvedValue({ id: documentId, filePath: 'test.xyz' });
-            (fs.readFileSync as jest.Mock).mockReturnValue(Buffer.from('dummy'));
-
-            await service.ingestDocument(documentId);
-
-            expect(prisma.document.update).toHaveBeenCalledWith({
-                where: { id: documentId },
-                data: { status: 'ERROR' },
-            });
+        expect(mockPrismaService.file.update).toHaveBeenCalledWith({
+            where: { id: 'file-1' },
+            data: expect.objectContaining({
+                status: 'CHECKSUM_FAILED',
+            }),
         });
     });
 });

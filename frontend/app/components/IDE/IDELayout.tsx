@@ -5,27 +5,28 @@ import { useIDE } from './IDEContext';
 import FileExplorer from './FileExplorer';
 import EditorTabs from './EditorTabs';
 import DocumentPreview from '@/app/components/DocumentPreview';
-import { fetchDocumentContent } from '@/lib/api';
+import { fetchFileContent } from '@/lib/api';
 
 export default function IDELayout() {
-    const { sidebarVisible, rightPanelVisible, activeFileId, files } = useIDE();
+    const { sidebarVisible, rightPanelVisible, activeNodeId, nodes } = useIDE();
     const [contentUrl, setContentUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
 
-    const activeFile = files.find(f => f.id === activeFileId);
+    const activeNode = nodes.find(n => n.id === activeNodeId);
 
     useEffect(() => {
-        if (activeFileId) {
-            loadContent(activeFileId);
+        if (activeNode && activeNode.files && activeNode.files.length > 0) {
+            // Load the first file for now
+            loadContent(activeNode.files[0].id);
         } else {
             setContentUrl(null);
         }
-    }, [activeFileId]);
+    }, [activeNodeId, activeNode]);
 
-    async function loadContent(id: string) {
+    async function loadContent(fileId: string) {
         setLoading(true);
         try {
-            const blob = await fetchDocumentContent(id);
+            const blob = await fetchFileContent(fileId);
             const url = URL.createObjectURL(blob);
             setContentUrl(prev => {
                 if (prev) URL.revokeObjectURL(prev);
@@ -42,7 +43,7 @@ export default function IDELayout() {
     const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview');
 
     return (
-        <div className="flex h-full border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm">
+        <div className="flex h-full min-h-0 border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm">
             {/* Sidebar */}
             {sidebarVisible && (
                 <div className="w-64 flex-shrink-0 transition-all duration-300">
@@ -51,7 +52,7 @@ export default function IDELayout() {
             )}
 
             {/* Main Area */}
-            <div className="flex-1 flex flex-col min-w-0 bg-gray-100">
+            <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-gray-100">
                 <div className="flex items-center justify-between bg-gray-50 border-b border-gray-200 pr-2">
                     <EditorTabs />
                     <div className="flex bg-gray-200 rounded p-0.5 text-xs font-medium">
@@ -70,25 +71,31 @@ export default function IDELayout() {
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-hidden relative p-4 flex items-center justify-center">
-                    {activeFileId ? (
+                <div className="flex-1 min-h-0 overflow-hidden relative p-4">
+                    {activeNodeId ? (
                         viewMode === 'preview' ? (
-                            loading ? (
-                                <div className="text-gray-500">Loading document...</div>
-                            ) : contentUrl ? (
-                                <div className="w-full h-full bg-white shadow rounded-lg overflow-hidden">
-                                    <DocumentPreview url={contentUrl} title={activeFile?.title || 'Document'} />
-                                </div>
-                            ) : (
-                                <div className="text-red-500">Failed to load preview</div>
-                            )
+                            <div className="h-full w-full flex items-center justify-center">
+                                {loading ? (
+                                    <div className="text-gray-500">Loading document...</div>
+                                ) : contentUrl ? (
+                                    <div className="w-full h-full bg-white shadow rounded-lg overflow-hidden">
+                                        <DocumentPreview url={contentUrl} title={activeNode?.title || 'Document'} />
+                                    </div>
+                                ) : (
+                                    <div className="text-red-500">Failed to load preview</div>
+                                )}
+                            </div>
                         ) : (
-                            <div className="w-full h-full bg-white shadow rounded-lg overflow-auto p-4 font-mono text-sm">
-                                <pre>{JSON.stringify(activeFile, null, 2)}</pre>
+                            <div className="w-full h-full min-h-0 bg-gray-900 text-green-200 shadow rounded-lg overflow-hidden font-mono text-sm flex flex-col">
+                                <div className="flex-1 overflow-auto p-4">
+                                    <pre className="whitespace-pre-wrap break-words min-w-full">
+                                        {JSON.stringify(activeNode, null, 2)}
+                                    </pre>
+                                </div>
                             </div>
                         )
                     ) : (
-                        <div className="text-gray-400 text-center">
+                        <div className="h-full flex flex-col items-center justify-center text-gray-400 text-center">
                             <div className="text-4xl mb-2">📄</div>
                             <p>Select a document to start reviewing</p>
                         </div>

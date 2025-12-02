@@ -10,7 +10,7 @@ LLM-drevet plattform for opplasting, analyse og ISO-compliance av dokumenter.
 ## Stakk og mappeoversikt
 - Frontend: Next.js (App Router) i `frontend/`.
 - Backend: NestJS + Prisma i `backend/`; Postgres/pgvector via Docker Compose.
-- Docs: `docs/Overview.md` (arkitektur), `TESTING.md`.
+- Docs: `docs/Overview.md` (arkitektur), `docs/VercelPostgres.md` (Vercel Postgres + hybrid RAG), `TESTING.md`.
 - Andre: `agents/AgentPlaybook.md`, `team/TeamLead_Guide.md`, `configs/`, `scripts/`.
 
 ## Kom i gang (lokalt)
@@ -20,7 +20,10 @@ LLM-drevet plattform for opplasting, analyse og ISO-compliance av dokumenter.
    - Backend: `DATABASE_URL=postgresql://user:password@localhost:5432/iso_doc_platform`  
    - OpenRouter (påkrevd for ingestion/compliance): `OPENROUTER_API_KEY=...`
 3) Backend  
-   - `cd backend && npm install && npm run start:dev` (lytter på `4000`, CORS på).
+  - `cd backend && npm install`
+  - `npx prisma migrate deploy` (eller `prisma migrate dev` for lokal utvikling)
+  - `npm run db:seed` for å fylle inn demo-prosjekt, komponenttyper og regelsett
+  - `npm run start:dev` (lytter på `4000`, CORS på).
 4) Frontend  
    - `cd frontend && npm install && npm run dev -- -p 4001` (Next.js på `4001`).
 

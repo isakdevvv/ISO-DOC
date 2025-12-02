@@ -1,3 +1,5 @@
+"use client";
+
 import React from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
@@ -7,12 +9,13 @@ export default function Sidebar() {
     const searchParams = useSearchParams();
 
     const menuItems = [
-        { name: 'Dashboard', href: '/app/dashboard', icon: '📊', match: () => pathname === '/app/dashboard' && (!searchParams.get('tab') || searchParams.get('tab') === 'documents') },
+        { name: 'Dashboard', href: '/app/dashboard', icon: '📊', match: () => pathname === '/app/dashboard' && (!searchParams.get('tab') || searchParams.get('tab') === 'home') },
+        { name: 'Tasks', href: '/app/tasks', icon: '✅', match: () => pathname.startsWith('/app/tasks') },
         { name: 'Projects', href: '/app/projects', icon: '🗂️', match: () => pathname.startsWith('/app/projects') },
         { name: 'Documents', href: '/app/documents', icon: '📁', match: () => pathname.startsWith('/app/documents') },
-        { name: 'Compliance Audit', href: '/app/dashboard?tab=compliance', icon: '⚡️', match: () => pathname === '/app/dashboard' && searchParams.get('tab') === 'compliance' },
-        { name: 'Gap Analysis', href: '/app/dashboard?tab=gap-analysis', icon: '🔍', match: () => pathname === '/app/dashboard' && searchParams.get('tab') === 'gap-analysis' },
+        { name: 'Compliance Workspace', href: '/app/dashboard?tab=compliance', icon: '⚡️', match: () => pathname === '/app/dashboard' && searchParams.get('tab') === 'compliance' },
         { name: 'Templates', href: '/app/dashboard?tab=templates', icon: '📝', match: () => pathname === '/app/dashboard' && searchParams.get('tab') === 'templates' },
+        { name: 'Forms', href: '/app/forms', icon: '📝', match: () => pathname.startsWith('/app/forms') },
         { name: 'Reports', href: '/app/reports', icon: '📋' },
         { name: 'Settings', href: '/app/settings', icon: '⚙️' },
     ];

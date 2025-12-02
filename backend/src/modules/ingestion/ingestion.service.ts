@@ -1,298 +1,396 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '../../prisma.service';
-import { OpenAIEmbeddings } from '@langchain/openai';
-import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
-const pdf = require('pdf-parse');
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { File as FileRecord, IngestionJob, IngestionJobStatus, IngestionJobType, Prisma } from '@prisma/client';
+import * as crypto from 'crypto';
+import * as fs from 'fs/promises';
 
+import { StorageDriver, StorageService } from '@/common/storage/storage.service';
+import { PrismaService } from '@/prisma.service';
+import { CreateUploadRequestDto } from './dto/create-upload-request.dto';
+import { IngestionQueueService } from './ingestion.queue';
 
-import * as fs from 'fs';
-import { Document } from '@prisma/client';
+export interface IngestFilesInput {
+    tenantId?: string;
+    projectId?: string;
+    nodeId?: string;
+    source?: string;
+    files: Express.Multer.File[];
+}
 
-import { NotificationsService } from '../notifications/notifications.service';
+interface ResolveContextInput {
+    tenantId?: string;
+    projectId?: string;
+    nodeId?: string;
+}
+
+interface ResolvedContext {
+    tenantId: string;
+    project?: { id: string; tenantId: string } | null;
+    node?: { id: string; projectId: string; tenantId: string } | null;
+}
+
+interface PendingFileParams {
+    tenantId: string;
+    projectId?: string;
+    nodeId?: string;
+    fileName: string;
+    mimeType: string;
+    size?: number;
+    checksum?: string;
+    source: string;
+}
+
+interface PendingFileResult {
+    file: FileRecord;
+    job: IngestionJob;
+}
 
 @Injectable()
 export class IngestionService {
     private readonly logger = new Logger(IngestionService.name);
-    private embeddings: OpenAIEmbeddings;
-    private readonly metadataTimeoutMs = Number(process.env.DOC_STAGE_TIMEOUT_MS || 30000);
+    private readonly originalsBucket = 'original-files';
 
     constructor(
-        private prisma: PrismaService,
-        private notificationsService: NotificationsService
-    ) {
-        this.embeddings = new OpenAIEmbeddings({
-            apiKey: process.env.OPENROUTER_API_KEY,
-            configuration: {
-                baseURL: 'https://openrouter.ai/api/v1',
-            },
-            modelName: 'text-embedding-3-small',
-        });
-    }
+        private readonly prisma: PrismaService,
+        private readonly storage: StorageService,
+        private readonly queue: IngestionQueueService,
+    ) { }
 
-    /**
-     * Fails fast if the wrapped promise does not settle within the timeout.
-     */
-    private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
-        let timeout: NodeJS.Timeout | undefined;
-        try {
-            return await Promise.race<T>([
-                promise,
-                new Promise<T>((_, reject) => {
-                    timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
-                }),
-            ]);
-        } finally {
-            if (timeout) {
-                clearTimeout(timeout);
-            }
+    async ingestFiles(input: IngestFilesInput) {
+        if (!input.files?.length) {
+            throw new BadRequestException('At least one file must be provided');
         }
-    }
 
-    async stageDocument(documentId: string) {
-        this.logger.log(`Starting staging for document ${documentId}`);
+        const context = await this.resolveContext({
+            tenantId: input.tenantId,
+            projectId: input.projectId,
+            nodeId: input.nodeId,
+        });
 
-        let document: Document | null = null;
-
-        try {
-            document = await this.prisma.document.findUnique({
-                where: { id: documentId },
+        const results = [];
+        for (const file of input.files) {
+            const pending = await this.createPendingFile({
+                tenantId: context.tenantId,
+                projectId: context.project?.id,
+                nodeId: context.node?.id,
+                fileName: file.originalname ?? 'upload',
+                mimeType: file.mimetype ?? 'application/octet-stream',
+                size: file.size,
+                source: input.source ?? 'UPLOAD',
             });
 
-            if (!document) {
-                this.logger.error(`Document ${documentId} not found`);
-                return;
-            }
-
-            // 1. Extract Text
-            const text = await this.extractText(document.filePath);
-
-            // 2. Extract Metadata (LLM)
-            const metadata = await this.withTimeout(
-                this.extractMetadata(text),
-                this.metadataTimeoutMs,
-                `Metadata extraction timed out after ${this.metadataTimeoutMs}ms`
-            );
-            this.logger.log(`Extracted metadata: ${JSON.stringify(metadata)}`);
-
-            // 3. Chunk Text
-            const splitter = new RecursiveCharacterTextSplitter({
-                chunkSize: 1000,
-                chunkOverlap: 200,
-            });
-            const chunks = await splitter.createDocuments([text]);
-
-            this.logger.log(`Created ${chunks.length} chunks for document ${documentId}`);
-
-            // 4. Save Chunks (WITHOUT Embeddings)
-            // Using transaction to ensure atomicity
-            await this.prisma.$transaction(async (tx) => {
-                // Clear existing chunks if any (re-staging)
-                await tx.documentChunk.deleteMany({ where: { documentId } });
-
-                for (const [index, chunk] of chunks.entries()) {
-                    await tx.documentChunk.create({
-                        data: {
-                            content: chunk.pageContent,
-                            pageNumber: index + 1,
-                            documentId: documentId,
-                            // embedding is null by default
-                        }
-                    });
-                }
-
-                // Update status and metadata
-                await tx.document.update({
-                    where: { id: documentId },
-                    data: {
-                        status: 'STAGED',
-                        author: metadata.metadata?.author || 'Unknown',
-                        summary: metadata.metadata?.summary || 'No summary',
-                        docType: metadata.metadata?.docType || 'Other',
-                        extractedData: metadata // Save full JSON
-                    },
-                });
+            await this.persistUploadedFile(pending.file, file);
+            const stored = await this.prisma.file.findUnique({
+                where: { id: pending.file.id },
+                include: { variants: true },
             });
 
-            this.logger.log(`Staging complete for document ${documentId}`);
-
-        } catch (error) {
-            const message = (error as Error)?.message || 'Unknown staging error';
-            this.logger.error(`Staging failed: ${message}`, (error as any)?.stack);
-
-            // Do not attempt to update if the document was never loaded (e.g. deleted meanwhile)
-            if (document) {
-                await this.prisma.document.update({
-                    where: { id: documentId },
-                    data: {
-                        status: 'ERROR',
-                        errorMessage: message
-                    },
+            if (stored) {
+                results.push({
+                    file: stored,
+                    variants: stored.variants,
                 });
             }
-            throw error;
         }
+
+        return { files: results };
     }
 
-    async commitDocument(documentId: string) {
-        this.logger.log(`Committing document ${documentId} (Generating Embeddings)`);
-
-        const document = await this.prisma.document.findUnique({
-            where: { id: documentId },
-            include: { chunks: true }
+    async requestUpload(request: CreateUploadRequestDto) {
+        const context = await this.resolveContext({
+            tenantId: request.tenantId,
+            projectId: request.projectId,
+            nodeId: request.nodeId,
         });
 
-        if (!document || document.status !== 'STAGED') {
-            throw new Error(`Document ${documentId} is not in STAGED status`);
-        }
+        const pending = await this.createPendingFile({
+            tenantId: context.tenantId,
+            projectId: context.project?.id,
+            nodeId: context.node?.id,
+            fileName: request.fileName,
+            mimeType: request.mimeType,
+            size: request.size,
+            checksum: request.checksum,
+            source: request.source ?? 'UPLOAD',
+        });
 
-        try {
-            // Generate Embeddings & Update Chunks
-            for (const chunk of document.chunks) {
-                const embedding = await this.embeddings.embedQuery(chunk.content);
-
-                // Save embedding using raw query for vector type
-                await this.prisma.$executeRaw`
-                    UPDATE "DocumentChunk"
-                    SET "embedding" = ${embedding}::vector
-                    WHERE "id" = ${chunk.id}
-                `;
-            }
-
-            // Update status
-            await this.prisma.document.update({
-                where: { id: documentId },
-                data: { status: 'ANALYZED' },
-            });
-
-            await this.prisma.documentTask.updateMany({
-                where: { documentId },
-                data: { status: 'READY' },
-            });
-
-            this.logger.log(`Commit complete for document ${documentId}`);
-
-            // Notify Success
-            await this.notificationsService.create({
-                title: 'Analysis Complete',
-                message: `Document "${document.title}" has been successfully analyzed and added to the knowledge base.`,
-                type: 'SUCCESS'
-            });
-
-        } catch (error) {
-            this.logger.error(`Commit failed: ${error.message}`, error.stack);
-
-            // Notify Failure
-            await this.notificationsService.create({
-                title: 'Analysis Failed',
-                message: `Failed to analyze document "${document.title}": ${error.message}`,
-                type: 'ERROR'
-            });
-
-            throw error;
-        }
-    }
-
-    // Deprecated: Kept for backward compatibility if needed, but redirects to new flow
-    async ingestDocument(documentId: string) {
-        await this.stageDocument(documentId);
-        await this.commitDocument(documentId);
-    }
-
-    private async extractMetadata(text: string): Promise<any> {
-        const { ChatOpenAI } = await import("@langchain/openai");
-        const { HumanMessage, SystemMessage } = await import("@langchain/core/messages");
-
-        const chat = new ChatOpenAI({
-            apiKey: process.env.OPENROUTER_API_KEY,
-            configuration: {
-                baseURL: 'https://openrouter.ai/api/v1',
+        const uploadPath = `/ingestion/upload/${pending.file.id}/content`;
+        await this.prisma.ingestionJob.update({
+            where: { id: pending.job.id },
+            data: {
+                metadata: {
+                    phase: 'WAITING_UPLOAD',
+                    uploadUrl: uploadPath,
+                } as Prisma.JsonValue,
             },
-            modelName: 'openai/gpt-4o-mini', // Better model for structured extraction
-            temperature: 0,
         });
 
-        const prompt = `
-            You are an expert ISO compliance auditor and data extractor. 
-            Analyze the document text provided below and extract a COMPLETE structured representation.
-            
-            Return ONLY a valid JSON object with the following structure:
-            {
-                "metadata": {
-                    "author": "string",
-                    "title": "string",
-                    "date": "YYYY-MM-DD or null",
-                    "version": "string or null",
-                    "docType": "Policy | Procedure | Standard | Record | Other",
-                    "summary": "string"
-                },
-                "structure": {
-                    "sections": [
-                        {
-                            "title": "Section Title",
-                            "content": "Summary or key content of section",
-                            "clauses": [
-                                { "id": "1.1", "title": "Clause Title", "text": "Full text of clause" }
-                            ]
-                        }
-                    ]
-                },
-                "key_entities": ["List of important entities/roles mentioned"],
-                "definitions": [{"term": "Term", "definition": "Definition"}]
+        return {
+            fileId: pending.file.id,
+            jobId: pending.job.id,
+            checksum: pending.file.checksum,
+            uploadUrl: uploadPath,
+            uploadMethod: 'PUT',
+            formField: 'file',
+            bucket: this.originalsBucket,
+            storageKey: pending.file.storageKey,
+            requiresAuth: true,
+        };
+    }
+
+    async receiveUploadedFile(fileId: string, file: Express.Multer.File) {
+        if (!file) {
+            throw new BadRequestException('Missing file payload');
+        }
+
+        const record = await this.prisma.file.findUnique({ where: { id: fileId } });
+        if (!record) {
+            throw new NotFoundException('File not found');
+        }
+
+        await this.persistUploadedFile(record, file);
+
+        const job = await this.prisma.ingestionJob.findFirst({
+            where: { fileId: record.id, jobType: IngestionJobType.NORMALIZE_FILE },
+        });
+
+        const fileWithVariants = await this.prisma.file.findUnique({
+            where: { id: record.id },
+            include: { variants: true },
+        });
+
+        return {
+            file: fileWithVariants,
+            jobId: job?.id,
+            status: job?.status ?? IngestionJobStatus.RUNNING,
+        };
+    }
+
+    async listProjectFiles(projectId: string) {
+        const project = await this.prisma.project.findUnique({
+            where: { id: projectId },
+            select: { id: true },
+        });
+
+        if (!project) {
+            throw new NotFoundException('Project not found');
+        }
+
+        return this.prisma.file.findMany({
+            where: { projectId },
+            orderBy: { createdAt: 'desc' },
+            include: { variants: true },
+        });
+    }
+
+    async getFileStream(fileId: string) {
+        const file = await this.prisma.file.findUnique({
+            where: { id: fileId },
+        });
+
+        if (!file) {
+            throw new NotFoundException('File not found');
+        }
+
+        const download = await this.storage.getObjectStream(file.storageKey);
+        return {
+            stream: download.stream,
+            mimeType: file.mimeType ?? download.mimeType ?? 'application/octet-stream',
+            fileName: file.fileName,
+        };
+    }
+
+    private async persistUploadedFile(fileRecord: FileRecord, uploaded: Express.Multer.File) {
+        const buffer = await this.getFileBuffer(uploaded);
+        const checksum = this.hashBuffer(buffer);
+
+        if (fileRecord.checksum && fileRecord.checksum !== checksum) {
+            await this.handleChecksumMismatch(fileRecord, uploaded, checksum);
+        }
+
+        const parsedKey = this.storage.parseStorageKey(fileRecord.storageKey);
+
+        const bucket = parsedKey.bucket ?? this.originalsBucket;
+        const objectKey = parsedKey.objectKey ?? this.buildObjectKey(fileRecord.tenantId, fileRecord.projectId, uploaded.originalname ?? fileRecord.fileName);
+        const driver: StorageDriver = parsedKey.driver === 'legacy' ? 'local' : (parsedKey.driver as StorageDriver);
+        const storageKey = this.storage.buildStorageKey(bucket, objectKey, driver);
+
+        await this.storage.uploadObject({
+            bucket,
+            objectKey,
+            body: buffer,
+            contentType: uploaded.mimetype ?? 'application/octet-stream',
+            driver,
+        });
+
+        await this.prisma.file.update({
+            where: { id: fileRecord.id },
+            data: {
+                storageKey,
+                fileName: uploaded.originalname ?? fileRecord.fileName,
+                mimeType: uploaded.mimetype ?? fileRecord.mimeType,
+                size: buffer.length,
+                checksum,
+                status: 'STORED',
+            },
+        });
+
+        await this.prisma.ingestionJob.updateMany({
+            where: { fileId: fileRecord.id, jobType: IngestionJobType.NORMALIZE_FILE },
+            data: {
+                status: IngestionJobStatus.RUNNING,
+            },
+        });
+
+        await this.queue.enqueueNormalizeJob(fileRecord.id);
+
+        await this.cleanupTempFile(uploaded);
+
+        if (!fileRecord.checksum) {
+            await this.prisma.file.update({
+                where: { id: fileRecord.id },
+                data: { checksum },
+            });
+        }
+    }
+
+    private async resolveContext(input: ResolveContextInput): Promise<ResolvedContext> {
+        const project = input.projectId
+            ? await this.prisma.project.findUnique({
+                where: { id: input.projectId },
+                select: { id: true, tenantId: true },
+            })
+            : null;
+
+        if (input.projectId && !project) {
+            throw new NotFoundException('Project not found');
+        }
+
+        const tenantId = input.tenantId ?? project?.tenantId;
+        if (!tenantId) {
+            throw new BadRequestException('tenantId is required when projectId is not provided');
+        }
+
+        let node: ResolvedContext['node'] = null;
+        if (input.nodeId) {
+            node = await this.prisma.node.findUnique({
+                where: { id: input.nodeId },
+                select: { id: true, projectId: true, tenantId: true },
+            });
+            if (!node) {
+                throw new NotFoundException('Node not found');
             }
+            if (project && node.projectId !== project.id) {
+                throw new BadRequestException('Node does not belong to the provided project');
+            }
+            if (node.tenantId !== tenantId) {
+                throw new BadRequestException('Node tenant mismatch');
+            }
+        }
 
-            Document Text (first 15000 chars):
-            ${text.substring(0, 15000)}
-        `;
+        return { tenantId, project, node };
+    }
 
-        try {
-            const response = await chat.invoke([
-                new SystemMessage("You are a helpful assistant that extracts structured data as JSON."),
-                new HumanMessage(prompt),
-            ]);
+    private async createPendingFile(params: PendingFileParams): Promise<PendingFileResult> {
+        const objectKey = this.buildObjectKey(params.tenantId, params.projectId, params.fileName);
+        const storageKey = this.storage.buildStorageKey(this.originalsBucket, objectKey);
 
-            const content = response.content.toString();
-            // Clean up code blocks if present
-            const jsonString = content.replace(/```json/g, '').replace(/```/g, '').trim();
-            return JSON.parse(jsonString);
-        } catch (e) {
-            this.logger.error("Failed to extract metadata", e);
-            return {
-                metadata: { author: "Unknown", summary: "Auto-extraction failed", docType: "Other" },
-                structure: { sections: [] }
-            };
+        const file = await this.prisma.file.create({
+            data: {
+                tenantId: params.tenantId,
+                projectId: params.projectId,
+                nodeId: params.nodeId,
+                fileName: params.fileName,
+                mimeType: params.mimeType,
+                size: params.size ?? 0,
+                checksum: params.checksum ?? null,
+                source: params.source,
+                storageKey,
+                status: 'PENDING_UPLOAD',
+                metadata: {
+                    bucket: this.originalsBucket,
+                } as Prisma.JsonValue,
+            },
+        });
+
+        const job = await this.prisma.ingestionJob.create({
+            data: {
+                tenantId: params.tenantId,
+                projectId: params.projectId,
+                nodeId: params.nodeId,
+                fileId: file.id,
+                jobType: IngestionJobType.NORMALIZE_FILE,
+                status: IngestionJobStatus.PENDING,
+                metadata: {
+                    phase: 'WAITING_UPLOAD',
+                    source: params.source,
+                } as Prisma.JsonValue,
+            },
+        });
+
+        return { file, job };
+    }
+
+    private buildObjectKey(tenantId: string, projectId: string | null | undefined, fileName: string) {
+        const safeName = this.sanitizeFileName(fileName);
+        const scope = projectId ?? 'unassigned';
+        return `${tenantId}/${scope}/${crypto.randomUUID()}-${safeName}`;
+    }
+
+    private sanitizeFileName(fileName: string) {
+        return fileName
+            .toLowerCase()
+            .replace(/[^a-z0-9\.\-_]+/g, '-');
+    }
+
+    private hashBuffer(buffer: Buffer) {
+        return crypto.createHash('sha256').update(buffer).digest('hex');
+    }
+
+    private async getFileBuffer(file: Express.Multer.File) {
+        if (file.buffer) {
+            return file.buffer;
+        }
+        if (!file.path) {
+            throw new BadRequestException('Unable to access file buffer');
+        }
+        return fs.readFile(file.path);
+    }
+
+    private async cleanupTempFile(file: Express.Multer.File) {
+        if (file.path) {
+            try {
+                await fs.unlink(file.path);
+            } catch (error) {
+                this.logger.debug(`Unable to cleanup temp file ${file.path}: ${error.message}`);
+            }
         }
     }
 
-    async search(query: string, limit: number = 5): Promise<any[]> {
-        const embedding = await this.embeddings.embedQuery(query);
-        const results = await this.prisma.$queryRaw`
-            SELECT "content", "documentId", 1 - ("embedding" <=> ${embedding}::vector) as similarity
-            FROM "DocumentChunk"
-            ORDER BY similarity DESC
-            LIMIT ${limit};
-        `;
-        return results as any[];
-    }
+    private async handleChecksumMismatch(fileRecord: FileRecord, uploaded: Express.Multer.File, calculatedChecksum: string) {
+        const metadata = { ...((fileRecord.metadata as Prisma.JsonObject | null) ?? {}) } as Prisma.JsonObject;
+        metadata.checksumMismatch = {
+            expected: fileRecord.checksum,
+            received: calculatedChecksum,
+        };
 
-    private async extractText(filePath: string): Promise<string> {
-        const ext = filePath.split('.').pop()?.toLowerCase();
-        const dataBuffer = fs.readFileSync(filePath);
+        await this.prisma.file.update({
+            where: { id: fileRecord.id },
+            data: {
+                status: 'CHECKSUM_FAILED',
+                metadata,
+            },
+        });
 
-        switch (ext) {
-            case 'pdf':
-                const data = await pdf(dataBuffer);
-                return data.text;
-            case 'json':
-                const jsonData = JSON.parse(dataBuffer.toString('utf-8'));
-                return JSON.stringify(jsonData, null, 2);
-            case 'txt':
-                return dataBuffer.toString('utf-8');
-            case 'docx':
-                const mammoth = require('mammoth');
-                const result = await mammoth.extractRawText({ buffer: dataBuffer });
-                return result.value;
-            default:
-                throw new Error(`Unsupported file type: .${ext}`);
-        }
+        await this.prisma.ingestionJob.updateMany({
+            where: { fileId: fileRecord.id, jobType: IngestionJobType.NORMALIZE_FILE },
+            data: {
+                status: IngestionJobStatus.FAILED,
+                completedAt: new Date(),
+                lastError: 'CHECKSUM_MISMATCH',
+            },
+        });
+
+        await this.cleanupTempFile(uploaded);
+        throw new BadRequestException('Checksum mismatch');
     }
 }

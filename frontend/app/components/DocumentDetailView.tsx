@@ -2,17 +2,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { useCopilotAction, useCopilotReadable } from '@copilotkit/react-core';
-import { fetchDocument, exportDocument, fetchIsoStandards, runComplianceCheck, fetchDocumentContent, saveRemediationForm } from '@/lib/api';
+import { fetchNode, fetchRuleSets, runRuleEngine, fetchFileContent, Node, RuleSet, updateNode } from '@/lib/api';
 import DocumentPreview from '@/app/components/DocumentPreview';
-import PersistentCopilot from '@/app/components/PersistentCopilot';
-
-interface Document {
-    id: string;
-    title: string;
-    status: string;
-    createdAt: string;
-    remediationForm?: RemediationForm | null;
-}
 
 type RemediationForm = {
     owner?: string | null;
@@ -28,13 +19,13 @@ interface DocumentDetailViewProps {
 }
 
 export default function DocumentDetailView({ documentId, onBack }: DocumentDetailViewProps) {
-    const [document, setDocument] = useState<Document | null>(null);
+    const [node, setNode] = useState<Node | null>(null);
     const [contentUrl, setContentUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
     // Compliance State
-    const [standards, setStandards] = useState<{ id: string; title: string; status: string }[]>([]);
-    const [selectedStandard, setSelectedStandard] = useState<string>('');
+    const [ruleSets, setRuleSets] = useState<RuleSet[]>([]);
+    const [selectedRuleSetId, setSelectedRuleSetId] = useState<string>('');
     const [checking, setChecking] = useState(false);
     const [complianceResult, setComplianceResult] = useState<{ results: { status: string; requirement: string; reasoning: string; evidence?: string }[] } | null>(null);
     const [remediationNote, setRemediationNote] = useState('');
@@ -51,22 +42,22 @@ export default function DocumentDetailView({ documentId, onBack }: DocumentDetai
     const [formSavedAt, setFormSavedAt] = useState<string | null>(null);
 
     useCopilotReadable({
-        description: 'Document metadata',
-        value: document,
-        available: document ? 'enabled' : 'disabled',
-    }, [document]);
+        description: 'Node metadata',
+        value: node,
+        available: node ? 'enabled' : 'disabled',
+    }, [node]);
 
     useCopilotReadable({
-        description: 'Available ISO standards',
-        value: standards,
-        available: standards.length ? 'enabled' : 'disabled',
-    }, [standards]);
+        description: 'Available Rule Sets',
+        value: ruleSets,
+        available: ruleSets.length ? 'enabled' : 'disabled',
+    }, [ruleSets]);
 
     useCopilotReadable({
-        description: 'Selected ISO standard for this document',
-        value: selectedStandard,
-        available: selectedStandard ? 'enabled' : 'disabled',
-    }, [selectedStandard]);
+        description: 'Selected Rule Set for this node',
+        value: selectedRuleSetId,
+        available: selectedRuleSetId ? 'enabled' : 'disabled',
+    }, [selectedRuleSetId]);
 
     useCopilotReadable({
         description: 'Latest compliance check result',
@@ -96,19 +87,20 @@ export default function DocumentDetailView({ documentId, onBack }: DocumentDetai
     }, [formData]);
 
     useEffect(() => {
-        if (document?.remediationForm) {
+        if (node?.data && typeof node.data === 'object' && 'remediationForm' in node.data) {
+            const form = (node.data as any).remediationForm;
             setFormData({
-                owner: document.remediationForm.owner || '',
-                dueDate: document.remediationForm.dueDate || '',
-                status: document.remediationForm.status || '',
-                summary: document.remediationForm.summary || '',
-                nextSteps: document.remediationForm.nextSteps || '',
+                owner: form?.owner || '',
+                dueDate: form?.dueDate || '',
+                status: form?.status || '',
+                summary: form?.summary || '',
+                nextSteps: form?.nextSteps || '',
             });
         }
-    }, [document?.remediationForm]);
+    }, [node]);
 
     useEffect(() => {
-        if (!document?.id) return;
+        if (!node?.id) return;
         const safeFormData = {
             owner: formData.owner || undefined,
             dueDate: formData.dueDate || undefined,
@@ -116,15 +108,20 @@ export default function DocumentDetailView({ documentId, onBack }: DocumentDetai
             summary: formData.summary || undefined,
             nextSteps: formData.nextSteps || undefined,
         };
-        saveRemediationForm(document.id, safeFormData)
+
+        // Update node data with remediation form
+        const currentData = (node.data as any) || {};
+        updateNode(node.id, {
+            data: { ...currentData, remediationForm: safeFormData }
+        })
             .then(() => setFormSavedAt(new Date().toISOString()))
             .catch((e) => console.error('Failed to persist remediation form', e));
-    }, [formData, document?.id]);
+    }, [formData, node?.id]);
 
     useEffect(() => {
         if (documentId) {
-            loadDocument(documentId);
-            loadStandards();
+            loadNode(documentId);
+            loadRuleSets();
         }
     }, [documentId]);
 
@@ -136,18 +133,20 @@ export default function DocumentDetailView({ documentId, onBack }: DocumentDetai
         };
     }, [contentUrl]);
 
-    async function loadDocument(id: string) {
+    async function loadNode(id: string) {
         try {
-            const doc = await fetchDocument(id);
-            setDocument(doc);
+            const n = await fetchNode(id);
+            setNode(n);
 
-            // Fetch content blob with auth headers
-            try {
-                const blob = await fetchDocumentContent(id);
-                const url = URL.createObjectURL(blob);
-                setContentUrl(url);
-            } catch (e) {
-                console.error("Failed to load document content", e);
+            // Fetch content blob if node has files
+            if (n.files && n.files.length > 0) {
+                try {
+                    const blob = await fetchFileContent(n.files[0].id);
+                    const url = URL.createObjectURL(blob);
+                    setContentUrl(url);
+                } catch (e) {
+                    console.error("Failed to load file content", e);
+                }
             }
         } catch (err) {
             console.error(err);
@@ -156,23 +155,33 @@ export default function DocumentDetailView({ documentId, onBack }: DocumentDetai
         }
     }
 
-    async function loadStandards() {
+    async function loadRuleSets() {
         try {
-            const data = await fetchIsoStandards();
-            setStandards(data);
+            const data = await fetchRuleSets('default-project-id'); // TODO: dynamic project id
+            setRuleSets(data);
         } catch (error) {
-            console.error('Failed to fetch standards', error);
+            console.error('Failed to fetch rule sets', error);
         }
     }
 
     async function runAnalysis() {
-        if (!selectedStandard || !document) return;
+        if (!selectedRuleSetId || !node) return;
         setChecking(true);
         setComplianceResult(null);
 
         try {
-            const data = await runComplianceCheck(document.id, selectedStandard);
-            setComplianceResult(data);
+            // TODO: dynamic project id
+            const report = await runRuleEngine('default-project-id', { ruleSetIds: [selectedRuleSetId] });
+            // Map report to complianceResult format if needed, or update UI to show report
+            // For now, let's just show raw report or a simplified version
+            setComplianceResult({
+                results: report.requirementsModel?.payload?.ruleHits?.map((hit: any) => ({
+                    status: hit.outcomeType === 'PASS' ? 'COMPLIANT' : 'NON_COMPLIANT', // Simplified mapping
+                    requirement: hit.ruleCode,
+                    reasoning: hit.metadata?.reasoning || 'Rule evaluation result',
+                    evidence: hit.metadata?.evidence
+                })) || []
+            });
         } catch (error) {
             console.error('Compliance check failed', error);
         } finally {
@@ -223,6 +232,13 @@ export default function DocumentDetailView({ documentId, onBack }: DocumentDetai
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         render: (props: any) => {
             const { args, respond, status } = props;
+            if (status === 'complete') {
+                return (
+                    <div className="p-3 border rounded-lg bg-gray-100 text-gray-500 text-sm italic">
+                        ✓ Remediation note processed.
+                    </div>
+                );
+            }
             return (
                 <div className="p-3 border rounded-lg bg-blue-50 text-gray-900 space-y-2">
                     <div className="font-semibold">Insert this remediation note?</div>
@@ -271,7 +287,14 @@ export default function DocumentDetailView({ documentId, onBack }: DocumentDetai
         ],
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         render: (props: any) => {
-            const { args, respond } = props;
+            const { args, respond, status } = props;
+            if (status === 'complete') {
+                return (
+                    <div className="p-3 border rounded-lg bg-gray-100 text-gray-500 text-sm italic">
+                        ✓ Form filled.
+                    </div>
+                );
+            }
             return (
                 <div className="p-3 border rounded-lg bg-blue-50 text-gray-900 space-y-2">
                     <div className="font-semibold">Foreslå utfylling av skjema</div>
@@ -332,26 +355,22 @@ export default function DocumentDetailView({ documentId, onBack }: DocumentDetai
     });
 
     if (loading) return <div className="p-8">Loading...</div>;
-    if (!document) return <div className="p-8">Document not found</div>;
+    if (!node) return <div className="p-8">Node not found</div>;
 
     return (
         <div className="min-h-screen bg-gray-50 p-4">
             <div className="w-full max-w-[98%] mx-auto bg-white rounded-lg shadow p-6">
                 <header className="mb-8 border-b pb-4 flex justify-between items-start">
                     <div>
-                        <h1 className="text-3xl font-bold text-gray-900 mb-2">{document.title}</h1>
+                        <h1 className="text-3xl font-bold text-gray-900 mb-2">{node.title}</h1>
                         <div className="flex items-center gap-4 text-sm text-gray-500">
-                            <span>Uploaded: {new Date(document.createdAt).toLocaleDateString()}</span>
+                            <span>Uploaded: {new Date(node.createdAt).toLocaleDateString()}</span>
                             <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
-                                {document.status}
+                                {node.type}
                             </span>
-                            {document.status === 'ERROR' && (document as unknown as { errorMessage: string }).errorMessage && (
-                                <span className="text-xs text-red-600 font-medium">
-                                    Error: {(document as unknown as { errorMessage: string }).errorMessage}
-                                </span>
-                            )}
+                            {/* TODO: Add error display if needed */}
                             <button
-                                onClick={() => exportDocument(document.id)}
+                                onClick={() => alert('Export not implemented yet')}
                                 className="text-sm text-blue-600 hover:underline flex items-center gap-1"
                             >
                                 ⬇️ Download JSON
@@ -363,19 +382,19 @@ export default function DocumentDetailView({ documentId, onBack }: DocumentDetai
                     </button>
                 </header>
 
-                <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+                <div className="grid grid-cols-1 xl:grid-cols-9 gap-6">
                     {/* Left Column: Document Info & Preview */}
                     <div className="space-y-8 xl:col-span-5">
                         {/* File Preview */}
-                        <div className="h-[600px]">
+                        <div className="h-[calc(100vh-200px)] min-h-[600px]">
                             {contentUrl ? (
                                 <DocumentPreview
                                     url={contentUrl}
-                                    title={document.title}
+                                    title={node.title}
                                 />
                             ) : (
                                 <div className="h-full flex items-center justify-center bg-gray-100 rounded-lg text-gray-500">
-                                    Loading preview...
+                                    {node.files && node.files.length > 0 ? 'Loading preview...' : 'No content available'}
                                 </div>
                             )}
                         </div>
@@ -384,7 +403,7 @@ export default function DocumentDetailView({ documentId, onBack }: DocumentDetai
                         <div className="border rounded-lg p-4 bg-gray-50">
                             <h2 className="text-xl font-semibold mb-4">Metadata (JSON)</h2>
                             <pre className="bg-gray-900 text-green-400 p-4 rounded overflow-auto text-sm font-mono max-h-60">
-                                {JSON.stringify(document, null, 2)}
+                                {JSON.stringify(node, null, 2)}
                             </pre>
                         </div>
                     </div>
@@ -397,22 +416,22 @@ export default function DocumentDetailView({ documentId, onBack }: DocumentDetai
                             </h2>
 
                             <div className="mb-6">
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Select ISO Standard</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Select Rule Set</label>
                                 <div className="flex gap-2">
                                     <select
                                         className="flex-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
-                                        value={selectedStandard}
-                                        onChange={(e) => setSelectedStandard(e.target.value)}
+                                        value={selectedRuleSetId}
+                                        onChange={(e) => setSelectedRuleSetId(e.target.value)}
                                     >
-                                        <option value="">-- Select Standard --</option>
-                                        {standards.map(std => (
-                                            <option key={std.id} value={std.id}>{std.title} ({std.status})</option>
+                                        <option value="">-- Select Rule Set --</option>
+                                        {ruleSets.map(rs => (
+                                            <option key={rs.id} value={rs.id}>{rs.title} ({rs.code})</option>
                                         ))}
                                     </select>
                                     <button
                                         onClick={runAnalysis}
-                                        disabled={!selectedStandard || checking}
-                                        className={`px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors ${(!selectedStandard || checking) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                        disabled={!selectedRuleSetId || checking}
+                                        className={`px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors ${(!selectedRuleSetId || checking) ? 'opacity-50 cursor-not-allowed' : ''}`}
                                     >
                                         {checking ? 'Analyzing...' : 'Run Check'}
                                     </button>
@@ -576,22 +595,18 @@ export default function DocumentDetailView({ documentId, onBack }: DocumentDetai
                                     </span>
                                     <button
                                         onClick={async () => {
-                                            if (!document) return;
+                                            if (!node) return;
                                             try {
-                                                const currentExtracted = (document as unknown as { extractedData: any }).extractedData || {};
-                                                const updatedExtracted = {
-                                                    ...currentExtracted,
-                                                    remediation: formData
+                                                const currentData = (node.data as any) || {};
+                                                const updatedData = {
+                                                    ...currentData,
+                                                    remediationForm: formData
                                                 };
 
-                                                await fetch(`/api/documents/${document.id}`, {
-                                                    method: 'PATCH',
-                                                    headers: { 'Content-Type': 'application/json' },
-                                                    body: JSON.stringify({ extractedData: updatedExtracted })
-                                                });
+                                                await updateNode(node.id, { data: updatedData });
                                                 alert('Lagret til server!');
                                                 // Reload to confirm
-                                                loadDocument(document.id);
+                                                loadNode(node.id);
                                             } catch (e) {
                                                 console.error('Failed to save to server', e);
                                                 alert('Feil ved lagring til server');
@@ -606,10 +621,6 @@ export default function DocumentDetailView({ documentId, onBack }: DocumentDetai
                         </div>
                     </div>
 
-                    {/* Right Column: Persistent Copilot */}
-                    <div className="xl:col-span-3">
-                        <PersistentCopilot />
-                    </div>
                 </div>
             </div>
 

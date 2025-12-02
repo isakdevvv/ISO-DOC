@@ -1,35 +1,51 @@
 import { Module } from '@nestjs/common';
+import { CacheModule } from '@nestjs/cache-manager';
 import { ConfigModule } from '@nestjs/config';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 
-import { DocumentsModule } from './modules/documents/documents.module';
-import { IngestionModule } from './modules/ingestion/ingestion.module';
-
-import { IsoStandardsModule } from './modules/iso-standards/iso-standards.module';
-import { ComplianceModule } from './modules/compliance/compliance.module';
-import { RedisModule } from './modules/redis/redis.module';
-import { DashboardModule } from './modules/dashboard/dashboard.module';
-import { SearchModule } from './modules/search/search.module';
-import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AuthModule } from './modules/auth/auth.module';
-import { PrismaService } from './prisma.service';
+import { IngestionModule } from './modules/ingestion/ingestion.module';
+import { NodesModule } from './modules/nodes/nodes.module';
 import { ProjectsModule } from './modules/projects/projects.module';
+import { RagModule } from './modules/rag/rag.module';
+import { RuleEngineModule } from './modules/rule-engine/rule-engine.module';
 import { TemplatesModule } from './modules/templates/templates.module';
+import { MaintenanceModule } from './modules/maintenance/maintenance.module';
+import { TasksModule } from './modules/tasks/tasks.module';
+import { ApiKeysModule } from './modules/api-keys/api-keys.module';
+import { PublicApiModule } from './modules/public-api/public-api.module';
+import { TenantsModule } from './modules/tenants/tenants.module';
+import { DatabaseModule } from './database.module';
 
 @Module({
     imports: [
         ConfigModule.forRoot({ isGlobal: true }),
+        CacheModule.register({ isGlobal: true }),
+        DatabaseModule,
+        ThrottlerModule.forRoot([{
+            ttl: 60000,
+            limit: 100,
+        }]),
         AuthModule,
-        DocumentsModule,
         IngestionModule,
-        SearchModule,
-        DashboardModule,
-        ComplianceModule,
-        NotificationsModule,
-        IsoStandardsModule,
         ProjectsModule,
+        RuleEngineModule,
         TemplatesModule,
+        NodesModule,
+        RagModule,
+        MaintenanceModule,
+        TasksModule,
+        ApiKeysModule,
+        PublicApiModule,
+        TenantsModule,
     ],
     controllers: [],
-    providers: [PrismaService],
+    providers: [
+        {
+            provide: APP_GUARD,
+            useClass: ThrottlerGuard,
+        },
+    ],
 })
 export class AppModule { }

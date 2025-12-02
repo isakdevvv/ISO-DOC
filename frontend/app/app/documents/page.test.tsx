@@ -1,23 +1,28 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import DocumentsPage from './page';
-import { fetchDocuments, uploadDocuments, deleteDocument, fetchNotifications } from '@/lib/api';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { CopilotKit } from "@copilotkit/react-core"; // Import CopilotKit
+import { CopilotKit } from '@copilotkit/react-core';
+import DocumentsPage from './page';
+import { fetchDocuments, uploadDocuments, fetchDashboardStats, fetchNotifications } from '@/lib/api';
 
-// Mock the API module
 vi.mock('@/lib/api', () => ({
     fetchDocuments: vi.fn(),
     uploadDocuments: vi.fn(),
     deleteDocument: vi.fn(),
+    fetchDashboardStats: vi.fn(),
     fetchNotifications: vi.fn(),
     searchDocuments: vi.fn(),
     markNotificationRead: vi.fn(),
     markAllNotificationsRead: vi.fn(),
+    fetchBatchProgress: vi.fn(),
 }));
 
-// Mock useRouter and usePathname
+const mockRouter = { push: vi.fn(), replace: vi.fn() };
+
 vi.mock('next/navigation', () => ({
-    useRouter: () => ({ push: vi.fn() }),
+    useRouter: () => mockRouter,
+    useSearchParams: () => ({
+        get: () => null,
+    }),
     usePathname: () => '/app/documents',
 }));
 
@@ -27,88 +32,47 @@ describe('Documents Page', () => {
     });
 
     const renderWithCopilotKit = (component: React.ReactElement) => {
-        return render(<CopilotKit url="http://localhost:3000/api/copilot">{component}</CopilotKit>);
+        return render(<CopilotKit runtimeUrl="/api/copilot">{component}</CopilotKit>);
     };
 
-    it('renders document list', async () => {
-        const mockDocuments = [
+    it('renders the IDE based workspace with fetched documents', async () => {
+        (fetchDocuments as any).mockResolvedValue([
             { id: '1', title: 'Doc 1', status: 'ANALYZED', createdAt: '2023-01-01' },
             { id: '2', title: 'Doc 2', status: 'PENDING', createdAt: '2023-01-02' },
-        ];
-
-        (fetchDocuments as any).mockResolvedValue(mockDocuments);
+        ]);
+        (fetchDashboardStats as any).mockResolvedValue({ recentActivity: [] });
         (fetchNotifications as any).mockResolvedValue([]);
 
         renderWithCopilotKit(<DocumentsPage />);
 
-        await waitFor(() => {
-            expect(screen.getByText('Doc 1')).toBeDefined();
-            expect(screen.getByText('Doc 2')).toBeDefined();
-        });
-
+        expect(await screen.findByText('Documents')).toBeDefined();
         expect(fetchDocuments).toHaveBeenCalled();
+
+        // Expand All Documents group to reveal files
+        const groupToggle = await screen.findByText('All Documents');
+        fireEvent.click(groupToggle);
+
+        await waitFor(() => {
+            expect(screen.getByText(/Doc 1/)).toBeDefined();
+            expect(screen.getByText(/Doc 2/)).toBeDefined();
+        });
     });
 
-    it('handles file upload', async () => {
+    it('allows uploading new files from the toolbar', async () => {
         (fetchDocuments as any).mockResolvedValue([]);
+        (fetchDashboardStats as any).mockResolvedValue({ recentActivity: [] });
         (fetchNotifications as any).mockResolvedValue([]);
         (uploadDocuments as any).mockResolvedValue({ batchId: 'batch-1', documents: [] });
 
         renderWithCopilotKit(<DocumentsPage />);
 
         const file = new File(['dummy'], 'test.pdf', { type: 'application/pdf' });
-        const input = screen.getByLabelText('Upload New') as HTMLInputElement;
-        
+        const input = screen.getByLabelText('Upload Documents') as HTMLInputElement;
         Object.defineProperty(input, 'files', { value: [file] });
         fireEvent.change(input);
 
         await waitFor(() => {
             expect(uploadDocuments).toHaveBeenCalled();
         });
-    });
-
-    it('allows deleting a document', async () => {
-        const mockDocuments = [
-            { id: '1', title: 'Doc 1', status: 'ANALYZED', createdAt: '2023-01-01' },
-        ];
-        (fetchDocuments as any).mockResolvedValue(mockDocuments);
-        (fetchNotifications as any).mockResolvedValue([]);
-        
-        // Mock confirm
-        window.confirm = vi.fn(() => true);
-
-        renderWithCopilotKit(<DocumentsPage />);
-
-        await waitFor(() => {
-            expect(screen.getByText('Doc 1')).toBeDefined();
-        });
-
-        const deleteBtn = screen.getByText('Delete');
-        fireEvent.click(deleteBtn);
-
-        await waitFor(() => {
-            expect(deleteDocument).toHaveBeenCalledWith('1');
-            expect(fetchDocuments).toHaveBeenCalledTimes(2); // Initial + After delete
-        });
-    });
-
-    it('shows staged documents separately', async () => {
-        const mockDocuments = [
-            { id: '1', title: 'Active Doc', status: 'ANALYZED', createdAt: '2023-01-01' },
-            { id: '2', title: 'Staged Doc', status: 'STAGED', createdAt: '2023-01-02' },
-        ];
-        (fetchDocuments as any).mockResolvedValue(mockDocuments);
-        (fetchNotifications as any).mockResolvedValue([]);
-
-        renderWithCopilotKit(<DocumentsPage />);
-
-        await waitFor(() => {
-            expect(screen.getByText('Active Doc')).toBeDefined();
-            expect(screen.getByText('Staged Doc')).toBeDefined();
-        });
-
-        // Check that Staged Doc is in the "Processing Uploads" section
-        expect(screen.getByText('Processing Uploads')).toBeDefined();
-        expect(screen.getByText('Pending Review (See Dashboard)')).toBeDefined();
     });
 });

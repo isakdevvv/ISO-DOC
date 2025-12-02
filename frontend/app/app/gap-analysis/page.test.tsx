@@ -1,68 +1,91 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import GapAnalysisPage from './page';
-import { fetchIsoStandards, runGapAnalysis } from '@/lib/api';
+import { CopilotKit } from '@copilotkit/react-core';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
+import GapAnalysisPage from './page';
+import {
+    fetchNodes,
+    fetchRuleSets,
+    fetchLatestRequirements,
+    fetchRuleConflicts,
+    runRuleEngine,
+} from '@/lib/api';
 
-// Mock API
+const mockPush = vi.fn();
+const mockReplace = vi.fn();
+
 vi.mock('@/lib/api', () => ({
-    fetchIsoStandards: vi.fn(),
-    runGapAnalysis: vi.fn(),
+    fetchNodes: vi.fn(),
+    fetchRuleSets: vi.fn(),
+    fetchLatestRequirements: vi.fn(),
+    fetchRuleConflicts: vi.fn(),
+    runRuleEngine: vi.fn(),
+    searchDocuments: vi.fn(),
 }));
 
-// Mock useParams
 vi.mock('next/navigation', () => ({
-    useParams: () => ({}),
+    useRouter: () => ({ push: mockPush, replace: mockReplace }),
 }));
 
 describe('GapAnalysisPage', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        vi.spyOn(window, 'alert').mockImplementation(() => undefined);
     });
 
-    it('renders and loads standards', async () => {
-        const mockStandards = [{ id: 'iso-1', title: 'ISO 27001' }];
-        (fetchIsoStandards as any).mockResolvedValue(mockStandards);
-
-        render(<GapAnalysisPage />);
-
-        await waitFor(() => {
-            expect(screen.getByText('ISO 27001')).toBeDefined();
-        });
+    afterEach(() => {
+        (window.alert as any).mockRestore?.();
     });
 
-    it('runs gap analysis and displays results', async () => {
-        const mockStandards = [{ id: 'iso-1', title: 'ISO 27001' }];
-        const mockReport = {
-            standardTitle: 'ISO 27001',
-            gapAnalysis: [
-                {
-                    requiredDocument: { title: 'Security Policy', type: 'Policy', description: 'Desc' },
-                    status: 'MISSING',
-                    matchedDocument: null
-                },
-                {
-                    requiredDocument: { title: 'Risk Assessment', type: 'Record', description: 'Desc' },
-                    status: 'FULFILLED',
-                    matchedDocument: { id: 'doc-1', title: 'My Risk Assessment' }
-                }
-            ]
-        };
+    const renderWithCopilot = () => render(
+        <CopilotKit runtimeUrl="/api/copilot">
+            <GapAnalysisPage />
+        </CopilotKit>
+    );
 
-        (fetchIsoStandards as any).mockResolvedValue(mockStandards);
-        (runGapAnalysis as any).mockResolvedValue(mockReport);
-
-        render(<GapAnalysisPage />);
-
-        await waitFor(() => {
-            expect(screen.getByText('Run Gap Analysis')).toBeDefined();
+    it('renders the unified compliance workspace', async () => {
+        (fetchNodes as any).mockResolvedValue([
+            { id: 'node-1', title: 'Access Control Policy', status: 'PENDING_REVIEW', type: 'POLICY', tenantId: '', projectId: '', createdAt: '', updatedAt: '' },
+        ]);
+        (fetchRuleSets as any).mockResolvedValue([
+            { id: 'rs-1', title: 'ISO 27001', code: 'ISO27001', version: '1.0', description: '', scope: 'GLOBAL', isActive: true },
+        ]);
+        (fetchLatestRequirements as any).mockResolvedValue({
+            id: 'req-1',
+            projectId: 'default-project-id',
+            scope: 'FULL',
+            version: 1,
+            payload: {
+                requiredDocuments: [{ code: 'POL-1', title: 'Access Control Policy', severity: 'HIGH' }],
+                requiredFields: [{ path: 'policy.owner', description: 'Owner of policy' }],
+            },
+            warnings: [],
+            createdAt: new Date().toISOString(),
         });
+        (fetchRuleConflicts as any).mockResolvedValue([]);
 
-        fireEvent.click(screen.getByText('Run Gap Analysis'));
+        renderWithCopilot();
+
+        expect(await screen.findByText('Compliance Workspace')).toBeDefined();
+        expect(screen.getByText('Gap & Requirements Summary')).toBeDefined();
+        expect(screen.getAllByText('Access Control Policy').length).toBeGreaterThan(0);
+    });
+
+    it('runs the compliance audit flow from the workspace', async () => {
+        (fetchNodes as any).mockResolvedValue([]);
+        (fetchRuleSets as any).mockResolvedValue([
+            { id: 'rs-1', title: 'ISO 27001', code: 'ISO27001', version: '1.0', description: '', scope: 'GLOBAL', isActive: true },
+        ]);
+        (fetchLatestRequirements as any).mockResolvedValue(null);
+        (fetchRuleConflicts as any).mockResolvedValue([]);
+        (runRuleEngine as any).mockResolvedValue({ evaluationId: 'eval-1' });
+
+        renderWithCopilot();
+
+        const button = await screen.findByText('Run Compliance Audit');
+        fireEvent.click(button);
 
         await waitFor(() => {
-            expect(screen.getByText('Security Policy')).toBeDefined();
-            expect(screen.getByText('MISSING')).toBeDefined();
-            expect(screen.getByText('My Risk Assessment')).toBeDefined();
+            expect(runRuleEngine).toHaveBeenCalledWith('default-project-id', { ruleSetIds: ['rs-1'] });
         });
     });
 });

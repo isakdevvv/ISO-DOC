@@ -3,7 +3,7 @@
     "version": "1.0.0",
     "private": true,
     "scripts": {
-        "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+        "dev": "node scripts/kill-dev-ports.js && concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
         "dev:backend": "cd backend && npm run start:dev",
         "dev:frontend": "cd frontend && npm run dev -- -p 4001",
         "build": "concurrently \"npm run build:backend\" \"npm run build:frontend\"",

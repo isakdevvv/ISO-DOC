@@ -1,69 +1,61 @@
 import { useState, useEffect } from 'react';
-import { Notification, fetchNotifications, markNotificationRead, markAllNotificationsRead } from './api';
+import { isAuthenticationError } from './api';
+
+export interface Notification {
+    id: string;
+    title: string;
+    message: string;
+    type: 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR';
+    read: boolean;
+    createdAt: string;
+}
 
 export function useNotifications() {
     const [notifications, setNotifications] = useState<Notification[]>([]);
-    const [unreadCount, setUnreadCount] = useState(0);
 
-    const loadNotifications = async () => {
-        try {
-            const data = await fetchNotifications();
-            setNotifications(data);
-            setUnreadCount(data.filter(n => !n.read).length);
-        } catch (error) {
-            console.error('Failed to load notifications', error);
-        }
-    };
-
+    // Mock initial notifications for demo
     useEffect(() => {
-        loadNotifications();
-        const interval = setInterval(loadNotifications, 5000); // Poll every 5s
-        return () => clearInterval(interval);
+        // In a real app, fetch from API or SSE
     }, []);
 
-    const markRead = async (id: string) => {
-        try {
-            await markNotificationRead(id);
-            setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-            setUnreadCount(prev => Math.max(0, prev - 1));
-        } catch (error) {
-            console.error('Failed to mark read', error);
-        }
+    const unreadCount = notifications.filter(n => !n.read).length;
+
+    const markRead = (id: string) => {
+        setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
     };
 
-    const markAllRead = async () => {
-        try {
-            await markAllNotificationsRead();
-            setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-            setUnreadCount(0);
-        } catch (error) {
-            console.error('Failed to mark all read', error);
-        }
+    const markAllRead = () => {
+        setNotifications(prev => prev.map(n => ({ ...n, read: true })));
     };
 
-    return { notifications, unreadCount, markRead, markAllRead, refresh: loadNotifications };
+    const addNotification = (notification: Omit<Notification, 'id' | 'read' | 'createdAt'>) => {
+        const newNotification: Notification = {
+            ...notification,
+            id: Math.random().toString(36).substring(7),
+            read: false,
+            createdAt: new Date().toISOString(),
+        };
+        setNotifications(prev => [newNotification, ...prev]);
+    };
+
+    return { notifications, unreadCount, markRead, markAllRead, addNotification };
 }
 
-import { fetchBatchProgress } from './api';
-
 export function useBatchProgress(batchId: string | null) {
-    const [progress, setProgress] = useState<{ total: number, processed: number, failed: number, pending: number } | null>(null);
+    const [progress, setProgress] = useState<{ total: number; processed: number; failed: number } | null>(null);
 
     useEffect(() => {
-        if (!batchId) return;
+        if (!batchId) {
+            setProgress(null);
+            return;
+        }
 
-        const poll = async () => {
-            try {
-                const data = await fetchBatchProgress(batchId);
-                setProgress(data);
-            } catch (error) {
-                console.error('Failed to load batch progress', error);
-            }
-        };
+        // Mock progress simulation for now since we don't have a real batch API yet
+        // In reality, this would poll an endpoint like /ingestion/batch/:id
+        setProgress({ total: 0, processed: 0, failed: 0 });
 
-        poll();
-        const interval = setInterval(poll, 2000); // Poll every 2s
-        return () => clearInterval(interval);
+        // Cleanup
+        return () => setProgress(null);
     }, [batchId]);
 
     return progress;

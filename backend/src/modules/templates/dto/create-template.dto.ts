@@ -1,6 +1,8 @@
 export class CreateTemplateDto {
-    name: string;
+    code: string;
+    title: string;
+    version: string;
     description?: string;
-    category: string;
-    content: any;
+    schema: Record<string, any>;
+    metadata?: Record<string, any>;
 }

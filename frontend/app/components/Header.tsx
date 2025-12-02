@@ -19,12 +19,20 @@ export default function Header() {
 
     // Clear batch when done
     useEffect(() => {
-        if (progress && progress.processed + progress.failed === progress.total && progress.total > 0) {
-            // Keep showing for a moment then clear
+        if (!progress) return;
+
+        const isComplete = progress.total === 0
+            || (progress.processed + progress.failed >= progress.total && progress.total > 0);
+
+        if (isComplete) {
             const timer = setTimeout(() => setActiveBatchId(null), 5000);
             return () => clearTimeout(timer);
         }
     }, [progress]);
+
+    const uploadPercent = progress?.total
+        ? Math.round((progress.processed / progress.total) * 100)
+        : 0;
 
     return (
         <header className="bg-white border-b border-gray-200 px-8 py-4 flex justify-between items-center sticky top-0 z-10">
@@ -40,12 +48,12 @@ export default function Header() {
                 <div className="flex-1 mx-4">
                     <div className="flex justify-between text-xs text-gray-600 mb-1">
                         <span>Uploading... {progress.processed} of {progress.total}</span>
-                        <span>{Math.round((progress.processed / progress.total) * 100)}%</span>
+                        <span>{uploadPercent}%</span>
                     </div>
                     <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                         <div
                             className="h-full bg-blue-500 transition-all duration-500"
-                            style={{ width: `${(progress.processed / progress.total) * 100}%` }}
+                            style={{ width: `${uploadPercent}%` }}
                         />
                     </div>
                 </div>

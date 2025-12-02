@@ -3,128 +3,55 @@
 import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Header from '@/app/components/Header';
-import Sidebar from '@/app/components/Sidebar';
-import DocumentsTab from '@/app/components/DocumentsTab';
 import ComplianceTab from '@/app/components/ComplianceTab';
-import GapAnalysisTab from '@/app/components/GapAnalysisTab';
 import TemplatesTab from '@/app/components/TemplatesTab';
+import HomeTab from '../../components/HomeTab';
 
-import { IDEProvider, useIDE } from '@/app/components/IDE/IDEContext';
-import GlobalTools from '@/app/components/GlobalTools';
-import { fetchDocuments } from '@/lib/api';
+type DashboardTab = 'home' | 'compliance' | 'templates';
 
 function DashboardInner() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const tabParam = searchParams.get('tab');
-    const [activeTab, setActiveTab] = useState<'documents' | 'compliance' | 'gap-analysis' | 'templates'>('documents');
-    const { setFiles } = useIDE();
+    const [activeTab, setActiveTab] = useState<DashboardTab>('home');
 
     useEffect(() => {
-        if (tabParam === 'compliance') {
+        if (tabParam === 'documents') {
+            router.replace('/app/documents');
+            setActiveTab('home');
+            return;
+        }
+
+        if (tabParam === 'gap-analysis') {
+            router.replace('/app/dashboard?tab=compliance');
             setActiveTab('compliance');
-        } else if (tabParam === 'gap-analysis') {
-            setActiveTab('gap-analysis');
-        } else if (tabParam === 'templates') {
-            setActiveTab('templates');
+            return;
+        }
+
+        if (tabParam === 'templates' || tabParam === 'compliance' || tabParam === 'home') {
+            setActiveTab(tabParam as DashboardTab);
         } else {
-            setActiveTab('documents');
+            setActiveTab('home');
         }
-    }, [tabParam]);
-
-    // Fetch documents globally for Copilot context
-    useEffect(() => {
-        async function loadDocs() {
-            try {
-                const docs = await fetchDocuments();
-                setFiles(docs);
-            } catch (e) {
-                console.error(e);
-            }
-        }
-        loadDocs();
-    }, [setFiles]);
-
-    const handleTabChange = (tab: 'documents' | 'compliance' | 'gap-analysis' | 'templates') => {
-        setActiveTab(tab);
-        router.push(`/app/dashboard?tab=${tab}`);
-    };
+    }, [tabParam, router]);
 
     return (
-        <div className="flex min-h-screen bg-gray-50 overflow-hidden h-screen">
-            <Sidebar />
-
-            <div className="flex-1 flex flex-col min-w-0">
-                <Header />
-
-                <div className="flex-1 flex overflow-hidden">
-                    <main className={`flex-1 flex flex-col ${activeTab === 'documents' ? 'overflow-hidden' : 'p-8 overflow-y-auto'}`}>
-                        <div className={`${activeTab === 'documents' ? 'h-full flex flex-col' : 'max-w-7xl mx-auto space-y-8 w-full'}`}>
-                            {/* Tabs Navigation */}
-                            <div className={`border-b border-gray-200 ${activeTab === 'documents' ? 'px-4 pt-2' : ''}`}>
-                                <nav className="-mb-px flex space-x-8" aria-label="Tabs">
-                                    <button
-                                        onClick={() => handleTabChange('documents')}
-                                        className={`${activeTab === 'documents'
-                                            ? 'border-blue-500 text-blue-600'
-                                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                                            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-                                    >
-                                        Documents
-                                    </button>
-                                    <button
-                                        onClick={() => handleTabChange('compliance')}
-                                        className={`${activeTab === 'compliance'
-                                            ? 'border-blue-500 text-blue-600'
-                                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                                            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-                                    >
-                                        Compliance Audit
-                                    </button>
-                                    <button
-                                        onClick={() => handleTabChange('gap-analysis')}
-                                        className={`${activeTab === 'gap-analysis'
-                                            ? 'border-blue-500 text-blue-600'
-                                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                                            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-                                    >
-                                        Gap Analysis
-                                    </button>
-                                    <button
-                                        onClick={() => handleTabChange('templates')}
-                                        className={`${activeTab === 'templates'
-                                            ? 'border-blue-500 text-blue-600'
-                                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                                            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-                                    >
-                                        Templates
-                                    </button>
-                                </nav>
-                            </div>
-
-                            {/* Tab Content */}
-                            <div className={`${activeTab === 'documents' ? 'flex-1 min-h-0' : 'mt-6'}`}>
-                                {activeTab === 'documents' && <DocumentsTab />}
-                                {activeTab === 'compliance' && <ComplianceTab />}
-                                {activeTab === 'gap-analysis' && <GapAnalysisTab />}
-                                {activeTab === 'templates' && <TemplatesTab />}
-                            </div>
-                        </div>
-                    </main>
-
-                    {/* Global Right Sidebar */}
-                    <GlobalTools />
+        <div className="flex flex-col min-h-full bg-gray-50">
+            <Header />
+            <main className="flex-1 p-8">
+                <div className="max-w-7xl mx-auto space-y-8 w-full">
+                    {activeTab === 'home' && <HomeTab />}
+                    {activeTab === 'compliance' && <ComplianceTab />}
+                    {activeTab === 'templates' && <TemplatesTab />}
                 </div>
-            </div>
+            </main>
         </div>
     );
 }
 
 function DashboardContent() {
     return (
-        <IDEProvider>
-            <DashboardInner />
-        </IDEProvider>
+        <DashboardInner />
     );
 }
 

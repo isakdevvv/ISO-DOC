@@ -1,155 +1,721 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// Prisma schema aligning with TermoTeam blueprint data model
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
   previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
   extensions = [vector]
 }
 
+enum NodeStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  ARCHIVED
+}
 
+enum NodeRevisionChangeType {
+  INITIAL
+  EDIT
+  AI_GENERATION
+  MAINTENANCE_UPDATE
+  OVERRIDE
+}
 
+enum NodeRevisionSeverity {
+  NONE
+  NOTE
+  VARSEL
+}
 
-model Document {
+enum FileVariantType {
+  ORIGINAL
+  NORMALIZED_PDF
+  PLAIN_TEXT
+  STRUCTURED_JSON
+}
+
+enum IngestionJobType {
+  NORMALIZE_FILE
+  EXTRACT_TEXT
+  BUILD_STRUCTURED
+  INDEX_EMBEDDINGS
+}
+
+enum IngestionJobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum MaintenanceEventStatus {
+  RECEIVED
+  PARSED
+  NEEDS_REVIEW
+  COMPLETED
+}
+
+enum MaintenanceEventSource {
+  INTERNAL_APP
+  EXTERNAL_API
+  EMAIL
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  BLOCKED
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+enum RuleSetScope {
+  GLOBAL
+  TENANT
+  CUSTOMER
+  PROJECT
+}
+
+enum RuleEvaluationStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum RuleConflictStatus {
+  OPEN
+  RESOLVED
+  IGNORED
+}
+
+enum ApiKeyScope {
+  PROJECT
+  NODE
+}
+
+model Tenant {
+  id              String   @id @default(uuid())
+  name            String
+  slug            String   @unique
+  contactEmail    String?
+  archivePolicyId String?
+  metadata        Json?
+  agentSettings   Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  archivePolicy ArchivePolicy?     @relation(fields: [archivePolicyId], references: [id])
+  users         User[]
+  projects      Project[]
+  nodeApiKeys   NodeApiKey[]
+  files         File[]
+  maintenance   MaintenanceEvent[]
+  tasks         Task[]
+  Node          Node[]
+  RuleSet       RuleSet[]
+  components    Component[]
+  ingestionJobs IngestionJob[]
+}
+
+model ArchivePolicy {
+  id              String   @id @default(uuid())
+  name            String
+  description     String?
+  hotStorageDays  Int      @default(90)
+  coldStorageDays Int?
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenants  Tenant[]
+  projects Project[]
+}
+
+model User {
   id        String   @id @default(uuid())
-  title     String
-  content   String?  // Extracted text content
-  filePath  String   // Path to the original file
-  status    String   @default("PENDING") // PENDING, PROCESSED, ANALYZED
-  batchId   String?  // ID to group bulk uploads
-  projectId String?
-  
-  // Metadata
-  author          String?
-  summary         String?
-  docType         String?
-  publicationDate DateTime?
-  extractedData   Json?    // Full structured extraction from LLM
-  errorMessage    String?  // Reason for failure if status is ERROR
-  reviewData      Json?    // Inline review form for staged docs
-  remediationForm Json?    // Remediation form for analyzed docs
-
+  tenantId  String
+  email     String   @unique
+  name      String?
+  role      String
+  status    String   @default("ACTIVE")
+  metadata  Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  chunks    DocumentChunk[]
-  reports   ComplianceReport[]
-  project   Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  tasks     DocumentTask[]
-}
 
-
-model DocumentChunk {
-  id         String   @id @default(uuid())
-  content    String
-  embedding  Unsupported("vector(1536)")? // OpenAI embedding size
-  pageNumber Int?
-  documentId String
-  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  createdAt  DateTime @default(now())
-}
-
-model IsoStandard {
-  id        String   @id @default(uuid())
-  title     String
-  content   String?  // Extracted text content
-  filePath  String   // Path to the original file
-  status    String   @default("PENDING") // PENDING, PROCESSED, ANALYZED
-  
-  // Metadata
-  standardId      String? // e.g. "ISO 27001:2022"
-  publicationDate DateTime?
-  requiredDocuments Json? // List of required documents extracted from the standard
-  
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  chunks    IsoStandardChunk[]
-  reports   ComplianceReport[]
-}
-
-model IsoStandardChunk {
-  id            String   @id @default(uuid())
-  content       String
-  embedding     Unsupported("vector(1536)")?
-  clauseNumber  String?  // e.g. "5.1", "A.5.1"
-  isoStandardId String
-  isoStandard   IsoStandard @relation(fields: [isoStandardId], references: [id], onDelete: Cascade)
-  createdAt     DateTime @default(now())
-}
-
-model ComplianceReport {
-  id            String   @id @default(uuid())
-  documentId    String
-  document      Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  isoStandardId String
-  isoStandard   IsoStandard @relation(fields: [isoStandardId], references: [id], onDelete: Cascade)
-  status        String   @default("COMPLETED") // COMPLETED, FAILED, IN_PROGRESS
-  overallScore  Float?   // 0-100
-  createdAt     DateTime @default(now())
-  results       ComplianceResult[]
-}
-
-model ComplianceResult {
-  id                 String           @id @default(uuid())
-  complianceReportId String
-  complianceReport   ComplianceReport @relation(fields: [complianceReportId], references: [id], onDelete: Cascade)
-  requirement        String
-  status             String           // COMPLIANT, NON_COMPLIANT, PARTIAL, NOT_APPLICABLE
-  reasoning          String?
-  evidence           String?
-  clauseNumber       String?
-}
-
-model Notification {
-  id        String   @id @default(uuid())
-  title     String
-  message   String
-  type      String   // INFO, SUCCESS, WARNING, ERROR
-  read      Boolean  @default(false)
-  createdAt DateTime @default(now())
+  tenant                 Tenant              @relation(fields: [tenantId], references: [id])
+  tasks                  Task[]              @relation("TaskAssignee")
+  nodeRevisions          NodeRevision[]      @relation("NodeRevisionAuthor")
+  ruleOverrides          RuleOverride[]
+  createdRuleEvaluations RuleEvaluation[]    @relation("RuleEvaluationCreatedBy")
+  createdRequirements    RequirementsModel[] @relation("RequirementsModelCreatedBy")
 }
 
 model Project {
-  id          String        @id @default(uuid())
-  name        String
-  clientName  String?
-  description String?
-  status      String        @default("ACTIVE")
-  flowKey     String        @default("default")
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  documents   Document[]
-  tasks       DocumentTask[]
+  id               String    @id @default(uuid())
+  tenantId         String
+  archivePolicyId  String?
+  externalId       String?   @unique
+  name             String
+  clientName       String?
+  status           String    @default("ACTIVE")
+  address          String?
+  medium           String?
+  psValue          Float?
+  tsValue          Float?
+  volume           Float?
+  commissionedAt   DateTime?
+  decommissionedAt DateTime?
+  metadata         Json?
+  facts            Json?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  tenant          Tenant              @relation(fields: [tenantId], references: [id])
+  archivePolicy   ArchivePolicy?      @relation(fields: [archivePolicyId], references: [id])
+  nodes           Node[]
+  files           File[]
+  maintenance     MaintenanceEvent[]
+  tasks           Task[]
+  requirements    RequirementsModel[]
+  ruleEvaluations RuleEvaluation[]
+  factsEntries    ProjectFact[]
+  nodeApiKeys     NodeApiKey[]
+  ruleSets        RuleSet[]
+  ruleOverrides   RuleOverride[]
+  components      Component[]
+  ingestionJobs   IngestionJob[]
 }
 
-model DocumentTask {
-  id          String    @id @default(uuid())
+model ProjectFact {
+  id        String   @id @default(uuid())
+  projectId String
+  key       String
+  value     Json
+  source    String?
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@unique([projectId, key])
+}
+
+model ComponentType {
+  id              String   @id @default(uuid())
+  code            String   @unique
+  name            String
+  category        String
+  description     String?
+  defaultFacts    Json?
+  defaultMetadata Json?
+  fields          Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  components Component[]
+}
+
+model Component {
+  id              String    @id @default(uuid())
+  tenantId        String
+  projectId       String
+  componentTypeId String
+  name            String
+  tag             String?
+  serialNumber    String?
+  manufacturer    String?
+  installDate     DateTime?
+  status          String    @default("ACTIVE")
+  metadata        Json?
+  facts           Json?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  tenant            Tenant             @relation(fields: [tenantId], references: [id])
+  project           Project            @relation(fields: [projectId], references: [id])
+  componentType     ComponentType      @relation(fields: [componentTypeId], references: [id])
+  nodes             Node[]
+  maintenanceEvents MaintenanceEvent[]
+
+  @@index([projectId])
+  @@index([tenantId])
+  @@index([componentTypeId])
+}
+
+model Node {
+  id                String     @id @default(uuid())
+  tenantId          String
+  projectId         String
+  componentId       String?
+  type              String
+  title             String
+  status            NodeStatus @default(DRAFT)
+  templateCode      String?
+  templateVersion   String?
+  snapshotId        String?
+  currentRevisionId String?    @unique
+  data              Json?
+  facts             Json?
+  metadata          Json?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  tenant              Tenant                     @relation(fields: [tenantId], references: [id])
+  project             Project                    @relation(fields: [projectId], references: [id])
+  component           Component?                 @relation(fields: [componentId], references: [id])
+  currentRevision     NodeRevision?              @relation("NodeCurrentRevision", fields: [currentRevisionId], references: [id])
+  revisions           NodeRevision[]             @relation("NodeToRevision")
+  outboundEdges       NodeEdge[]                 @relation("NodeEdgeFrom")
+  inboundEdges        NodeEdge[]                 @relation("NodeEdgeTo")
+  generationSnapshots GenerationSnapshot[]
+  documentSegments    DocumentSegment[]
+  maintenanceLinks    MaintenanceEventDocument[]
+  tasks               Task[]
+  files               File[]
+  apiKeys             NodeApiKey[]
+  externalAccess      Boolean                    @default(false)
+  ingestionJobs       IngestionJob[]
+
+  @@index([tenantId])
+  @@index([projectId])
+  @@index([componentId])
+}
+
+model NodeEdge {
+  id         String   @id @default(uuid())
+  fromNodeId String
+  toNodeId   String
+  edgeType   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  fromNode Node @relation("NodeEdgeFrom", fields: [fromNodeId], references: [id])
+  toNode   Node @relation("NodeEdgeTo", fields: [toNodeId], references: [id])
+
+  @@unique([fromNodeId, toNodeId, edgeType])
+  @@index([fromNodeId])
+  @@index([toNodeId])
+}
+
+model NodeRevision {
+  id             String                 @id @default(uuid())
+  nodeId         String
+  revisionNumber Int
+  changeType     NodeRevisionChangeType @default(INITIAL)
+  severity       NodeRevisionSeverity   @default(NONE)
+  summary        String?
+  payload        Json?
+  previousData   Json?
+  newData        Json?
+  createdById    String?
+  createdAt      DateTime               @default(now())
+
+  node       Node                @relation("NodeToRevision", fields: [nodeId], references: [id])
+  createdBy  User?               @relation("NodeRevisionAuthor", fields: [createdById], references: [id])
+  snapshot   GenerationSnapshot?
+  segments   DocumentSegment[]
+  currentFor Node?               @relation("NodeCurrentRevision")
+
+  @@unique([nodeId, revisionNumber])
+}
+
+model File {
+  id                 String   @id @default(uuid())
+  tenantId           String
+  projectId          String?
+  nodeId             String?
+  maintenanceEventId String?
+  fileName           String
+  storageKey         String
+  mimeType           String
+  size               Int
+  checksum           String?
+  status             String   @default("STORED")
+  source             String?
+  originalUrl        String?
+  externalReference  String?
+  uploadedBy         String?
+  metadata           Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id])
+  project          Project?          @relation(fields: [projectId], references: [id])
+  node             Node?             @relation(fields: [nodeId], references: [id])
+  maintenanceEvent MaintenanceEvent? @relation(fields: [maintenanceEventId], references: [id])
+  variants         FileVariant[]
+  ingestionJobs    IngestionJob[]
+}
+
+model FileVariant {
+  id          String          @id @default(uuid())
+  fileId      String
+  variantType FileVariantType
+  url         String
+  storageKey  String
+  mimeType    String
+  size        Int?
+  checksum    String?
+  metadata    Json?
+  createdAt   DateTime        @default(now())
+
+  file File @relation(fields: [fileId], references: [id])
+
+  @@unique([fileId, variantType])
+}
+
+model IngestionJob {
+  id            String             @id @default(uuid())
+  tenantId      String
+  projectId     String?
+  nodeId        String?
+  fileId        String?
+  jobType       IngestionJobType   @default(NORMALIZE_FILE)
+  status        IngestionJobStatus @default(PENDING)
+  attempts      Int                @default(0)
+  lastError     String?
+  metadata      Json?
+  correlationId String?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id])
+  project Project? @relation(fields: [projectId], references: [id])
+  node    Node?    @relation(fields: [nodeId], references: [id])
+  file    File?    @relation(fields: [fileId], references: [id])
+
+  @@index([fileId])
+  @@index([projectId])
+  @@index([nodeId])
+}
+
+model MaintenanceEvent {
+  id          String                 @id @default(uuid())
+  tenantId    String
   projectId   String
-  documentId  String?   @unique
+  componentId String?
+  performedAt DateTime?
+  performedBy String?
+  eventType   String
+  status      MaintenanceEventStatus @default(RECEIVED)
+  source      MaintenanceEventSource @default(INTERNAL_APP)
+  rawPayload  Json
+  notes       Json?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  tenant      Tenant                     @relation(fields: [tenantId], references: [id])
+  project     Project                    @relation(fields: [projectId], references: [id])
+  component   Component?                 @relation(fields: [componentId], references: [id])
+  attachments File[]
+  documents   MaintenanceEventDocument[]
+  tasks       Task[]
+}
+
+model MaintenanceEventDocument {
+  id                 String   @id @default(uuid())
+  maintenanceEventId String
+  nodeId             String
+  linkType           String   @default("RELATED")
+  metadata           Json?
+  createdAt          DateTime @default(now())
+
+  maintenanceEvent MaintenanceEvent @relation(fields: [maintenanceEventId], references: [id])
+  node             Node             @relation(fields: [nodeId], references: [id])
+
+  @@unique([maintenanceEventId, nodeId, linkType])
+}
+
+model Task {
+  id                 String     @id @default(uuid())
+  tenantId           String
+  projectId          String
+  nodeId             String?
+  maintenanceEventId String?
+  type               String
+  status             TaskStatus @default(PENDING)
+  title              String
+  description        String?
+  priority           Int        @default(5)
+  taskTemplateId     String?
+  metadata           Json?
+  dueAt              DateTime?
+  assigneeId         String?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id])
+  project          Project           @relation(fields: [projectId], references: [id])
+  node             Node?             @relation(fields: [nodeId], references: [id])
+  maintenanceEvent MaintenanceEvent? @relation(fields: [maintenanceEventId], references: [id])
+  assignee         User?             @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  template         TaskTemplate?     @relation(fields: [taskTemplateId], references: [id])
+  runs             TaskRun[]
+}
+
+model TaskRun {
+  id         String    @id @default(uuid())
+  taskId     String
+  agent      String
+  status     String
+  input      Json?
+  output     Json?
+  error      String?
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  metadata   Json?
+
+  task Task @relation(fields: [taskId], references: [id])
+}
+
+model RuleSet {
+  id          String       @id @default(uuid())
+  tenantId    String?
+  projectId   String?
+  scope       RuleSetScope @default(GLOBAL)
+  code        String
   title       String
   description String?
-  flowType    String
-  status      String    @default("PENDING")
-  dueAt       DateTime?
+  version     String
   metadata    Json?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
-  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  document    Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  tenant  Tenant?  @relation(fields: [tenantId], references: [id])
+  project Project? @relation(fields: [projectId], references: [id])
+  rules   Rule[]
+
+  @@unique([code, version, tenantId, projectId])
 }
 
-model Template {
+model Rule {
   id          String   @id @default(uuid())
-  name        String
+  ruleSetId   String
+  code        String
   description String?
-  category    String   // e.g., "Policy", "Procedure", "Form"
-  content     Json     // Structured content (e.g., JSON schema or Rich Text)
-  version     Int      @default(1)
+  severity    String
+  appliesTo   Json?
+  condition   Json?
+  outcome     Json?
+  metadata    Json?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  ruleSet   RuleSet        @relation(fields: [ruleSetId], references: [id])
+  sources   RuleSource[]
+  overrides RuleOverride[]
+  hits      RuleHit[]
+}
+
+model RuleSource {
+  id        String   @id @default(uuid())
+  ruleId    String
+  title     String
+  reference String?
+  url       String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  rule Rule @relation(fields: [ruleId], references: [id])
+}
+
+model RuleOverride {
+  id          String   @id @default(uuid())
+  projectId   String
+  ruleId      String
+  status      String
+  notes       String?
+  metadata    Json?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  project   Project        @relation(fields: [projectId], references: [id])
+  rule      Rule           @relation(fields: [ruleId], references: [id])
+  createdBy User?          @relation(fields: [createdById], references: [id])
+  conflicts RuleConflict[] @relation("RuleOverrideConflicts")
+}
+
+model RuleEvaluation {
+  id          String               @id @default(uuid())
+  projectId   String
+  scope       String               @default("FULL")
+  status      RuleEvaluationStatus @default(PENDING)
+  facts       Json
+  summary     Json?
+  createdById String?
+  startedAt   DateTime             @default(now())
+  completedAt DateTime?
+
+  project      Project             @relation(fields: [projectId], references: [id])
+  createdBy    User?               @relation("RuleEvaluationCreatedBy", fields: [createdById], references: [id])
+  hits         RuleHit[]
+  conflicts    RuleConflict[]
+  requirements RequirementsModel[] @relation("EvaluationToRequirements")
+}
+
+model RuleHit {
+  id               String   @id @default(uuid())
+  ruleEvaluationId String
+  ruleId           String?
+  ruleCode         String?
+  severity         String?
+  outcome          Json?
+  metadata         Json?
+  createdAt        DateTime @default(now())
+
+  evaluation RuleEvaluation @relation(fields: [ruleEvaluationId], references: [id], onDelete: Cascade)
+  rule       Rule?          @relation(fields: [ruleId], references: [id])
+}
+
+model RuleConflict {
+  id                   String             @id @default(uuid())
+  ruleEvaluationId     String
+  ruleAId              String?
+  ruleACode            String?
+  ruleBId              String?
+  ruleBCode            String?
+  conflictType         String
+  status               RuleConflictStatus @default(OPEN)
+  message              String?
+  metadata             Json?
+  resolvedByOverrideId String?
+  resolvedAt           DateTime?
+  createdAt            DateTime           @default(now())
+
+  evaluation RuleEvaluation @relation(fields: [ruleEvaluationId], references: [id], onDelete: Cascade)
+  resolvedBy RuleOverride?  @relation("RuleOverrideConflicts", fields: [resolvedByOverrideId], references: [id], onDelete: SetNull)
+}
+
+model GenerationSnapshot {
+  id             String   @id @default(uuid())
+  nodeId         String
+  nodeRevisionId String?  @unique
+  snapshotType   String   @default("DOCUMENT")
+  payload        Json
+  ruleSetHash    String?
+  createdAt      DateTime @default(now())
+
+  node         Node              @relation(fields: [nodeId], references: [id])
+  nodeRevision NodeRevision?     @relation(fields: [nodeRevisionId], references: [id])
+  segments     DocumentSegment[]
+}
+
+model DocumentSegment {
+  id             String                       @id @default(uuid())
+  nodeId         String
+  snapshotId     String?
+  nodeRevisionId String?
+  orderIndex     Int
+  segmentType    String
+  content        String
+  embedding      Unsupported("vector(1536)")?
+  metadata       Json?
+  createdAt      DateTime                     @default(now())
+
+  node       Node                        @relation(fields: [nodeId], references: [id])
+  snapshot   GenerationSnapshot?         @relation(fields: [snapshotId], references: [id])
+  revision   NodeRevision?               @relation(fields: [nodeRevisionId], references: [id])
+  provenance DocumentSegmentProvenance[]
+}
+
+model DocumentSegmentProvenance {
+  id         String   @id @default(uuid())
+  segmentId  String
+  sourceType String
+  sourceId   String?
+  score      Float?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  segment DocumentSegment @relation(fields: [segmentId], references: [id])
+}
+
+model NodeApiKey {
+  id                 String      @id @default(uuid())
+  tenantId           String
+  projectId          String?
+  nodeId             String?
+  name               String
+  tokenHash          String      @unique
+  scope              ApiKeyScope @default(PROJECT)
+  isActive           Boolean     @default(true)
+  accessLevel        String      @default("READ")
+  expiresAt          DateTime?
+  rateLimitPerMinute Int?
+  maxCallsPerDay     Int?
+  lastUsedAt         DateTime?
+  metadata           Json?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  tenant  Tenant         @relation(fields: [tenantId], references: [id])
+  project Project?       @relation(fields: [projectId], references: [id])
+  node    Node?          @relation(fields: [nodeId], references: [id])
+  logs    ApiAccessLog[]
+}
+
+model ApiAccessLog {
+  id           String   @id @default(uuid())
+  nodeApiKeyId String
+  path         String
+  method       String
+  statusCode   Int
+  ipAddress    String?
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  apiKey NodeApiKey @relation(fields: [nodeApiKeyId], references: [id])
+}
+
+model RequirementsModel {
+  id                  String   @id @default(uuid())
+  projectId           String
+  scope               String   @default("FULL")
+  payload             Json
+  version             Int      @default(1)
+  warnings            Json?
+  unresolvedConflicts Json?
+  createdAt           DateTime @default(now())
+  createdById         String?
+  metadata            Json?
+  ruleEvaluationId    String?  @unique
+
+  project        Project         @relation(fields: [projectId], references: [id])
+  createdBy      User?           @relation("RequirementsModelCreatedBy", fields: [createdById], references: [id])
+  ruleEvaluation RuleEvaluation? @relation("EvaluationToRequirements", fields: [ruleEvaluationId], references: [id])
+}
+
+model DocumentTemplate {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  title       String
+  description String?
+  version     String
+  schema      Json
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model TaskTemplate {
+  id          String   @id @default(uuid())
+  tenantId    String
+  code        String
+  name        String
+  description String?
+  config      Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tasks Task[]
 }

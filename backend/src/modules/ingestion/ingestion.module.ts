@@ -1,11 +1,15 @@
 import { Module } from '@nestjs/common';
+
+import { StorageModule } from '@/common/storage/storage.module';
+import { PrismaService } from '@/prisma.service';
+import { IngestionController } from './ingestion.controller';
 import { IngestionService } from './ingestion.service';
-import { PrismaService } from '../../prisma.service';
-import { NotificationsModule } from '../notifications/notifications.module';
+import { IngestionQueueService } from './ingestion.queue';
 
 @Module({
-    imports: [NotificationsModule],
-    providers: [IngestionService, PrismaService],
+    imports: [StorageModule],
+    controllers: [IngestionController],
+    providers: [IngestionService, PrismaService, IngestionQueueService],
     exports: [IngestionService],
 })
 export class IngestionModule { }
