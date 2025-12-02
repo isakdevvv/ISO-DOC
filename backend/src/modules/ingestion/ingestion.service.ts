@@ -6,6 +6,7 @@ const pdf = require('pdf-parse');
 
 
 import * as fs from 'fs';
+import { Document } from '@prisma/client';
 
 import { NotificationsService } from '../notifications/notifications.service';
 
@@ -13,6 +14,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 export class IngestionService {
     private readonly logger = new Logger(IngestionService.name);
     private embeddings: OpenAIEmbeddings;
+    private readonly metadataTimeoutMs = Number(process.env.DOC_STAGE_TIMEOUT_MS || 30000);
 
     constructor(
         private prisma: PrismaService,
@@ -27,24 +29,49 @@ export class IngestionService {
         });
     }
 
+    /**
+     * Fails fast if the wrapped promise does not settle within the timeout.
+     */
+    private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+        let timeout: NodeJS.Timeout | undefined;
+        try {
+            return await Promise.race<T>([
+                promise,
+                new Promise<T>((_, reject) => {
+                    timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+                }),
+            ]);
+        } finally {
+            if (timeout) {
+                clearTimeout(timeout);
+            }
+        }
+    }
+
     async stageDocument(documentId: string) {
         this.logger.log(`Starting staging for document ${documentId}`);
 
-        const document = await this.prisma.document.findUnique({
-            where: { id: documentId },
-        });
-
-        if (!document) {
-            this.logger.error(`Document ${documentId} not found`);
-            return;
-        }
+        let document: Document | null = null;
 
         try {
+            document = await this.prisma.document.findUnique({
+                where: { id: documentId },
+            });
+
+            if (!document) {
+                this.logger.error(`Document ${documentId} not found`);
+                return;
+            }
+
             // 1. Extract Text
             const text = await this.extractText(document.filePath);
 
             // 2. Extract Metadata (LLM)
-            const metadata = await this.extractMetadata(text);
+            const metadata = await this.withTimeout(
+                this.extractMetadata(text),
+                this.metadataTimeoutMs,
+                `Metadata extraction timed out after ${this.metadataTimeoutMs}ms`
+            );
             this.logger.log(`Extracted metadata: ${JSON.stringify(metadata)}`);
 
             // 3. Chunk Text
@@ -89,14 +116,19 @@ export class IngestionService {
             this.logger.log(`Staging complete for document ${documentId}`);
 
         } catch (error) {
-            this.logger.error(`Staging failed: ${error.message}`, error.stack);
-            await this.prisma.document.update({
-                where: { id: documentId },
-                data: {
-                    status: 'ERROR',
-                    errorMessage: error.message
-                },
-            });
+            const message = (error as Error)?.message || 'Unknown staging error';
+            this.logger.error(`Staging failed: ${message}`, (error as any)?.stack);
+
+            // Do not attempt to update if the document was never loaded (e.g. deleted meanwhile)
+            if (document) {
+                await this.prisma.document.update({
+                    where: { id: documentId },
+                    data: {
+                        status: 'ERROR',
+                        errorMessage: message
+                    },
+                });
+            }
             throw error;
         }
     }
@@ -130,6 +162,11 @@ export class IngestionService {
             await this.prisma.document.update({
                 where: { id: documentId },
                 data: { status: 'ANALYZED' },
+            });
+
+            await this.prisma.documentTask.updateMany({
+                where: { documentId },
+                data: { status: 'READY' },
             });
 
             this.logger.log(`Commit complete for document ${documentId}`);

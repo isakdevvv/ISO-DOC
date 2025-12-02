@@ -3,8 +3,10 @@ import { ComplianceController } from './compliance.controller';
 import { ComplianceService } from './compliance.service';
 import { PrismaService } from '../../prisma.service';
 
+import { GapReporterService } from './gap-reporter.service';
+
 @Module({
     controllers: [ComplianceController],
-    providers: [ComplianceService, PrismaService],
+    providers: [ComplianceService, GapReporterService, PrismaService],
 })
 export class ComplianceModule { }

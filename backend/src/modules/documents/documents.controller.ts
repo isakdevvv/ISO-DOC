@@ -32,10 +32,11 @@ export class DocumentsController {
     }))
     async create(
         @UploadedFiles() files: Array<Express.Multer.File>,
-        @Body() body: { title?: string }
+        @Body() body: { title?: string, projectId?: string }
     ): Promise<{ batchId: string, documents: Document[] }> {
         const createdDocs: Document[] = [];
         const batchId = crypto.randomUUID();
+        const projectId = body.projectId && body.projectId !== 'undefined' ? body.projectId : undefined;
 
         for (const file of files) {
             const doc = await this.documentsService.createDocument({
@@ -43,7 +44,7 @@ export class DocumentsController {
                 filePath: file.path,
                 status: 'UPLOADING', // Initial status
                 batchId: batchId,
-            });
+            }, projectId);
             createdDocs.push(doc);
 
             // Trigger staging (async, fire and forget)

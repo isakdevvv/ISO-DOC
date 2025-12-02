@@ -12,6 +12,14 @@
     ],
     "routes": [
         {
+            "src": "/api/auth/(.*)",
+            "dest": "/frontend/api/auth/$1"
+        },
+        {
+            "src": "/api/copilot/(.*)",
+            "dest": "/frontend/api/copilot/$1"
+        },
+        {
             "src": "/api/(.*)",
             "dest": "/backend/src/main.ts"
         },

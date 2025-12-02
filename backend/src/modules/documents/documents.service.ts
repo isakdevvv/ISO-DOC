@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma.service';
 import { Document, Prisma } from '@prisma/client';
 import { IngestionService } from '../ingestion/ingestion.service';
@@ -35,10 +35,24 @@ export class DocumentsService {
         });
     }
 
-    async createDocument(data: Prisma.DocumentCreateInput): Promise<Document> {
-        return this.prisma.document.create({
-            data,
+    async createDocument(data: Prisma.DocumentCreateInput, projectId?: string): Promise<Document> {
+        const createData: Prisma.DocumentCreateInput = { ...data };
+
+        if (projectId && !createData.project) {
+            createData.project = {
+                connect: { id: projectId }
+            };
+        }
+
+        const document = await this.prisma.document.create({
+            data: createData,
         });
+
+        if (projectId) {
+            await this.ensureProjectTask(projectId, document);
+        }
+
+        return document;
     }
 
     async updateDocument(params: {
@@ -53,6 +67,13 @@ export class DocumentsService {
     }
 
     async deleteDocument(where: Prisma.DocumentWhereUniqueInput): Promise<Document> {
+        const document = await this.prisma.document.findUnique({ where });
+        if (!document) {
+            throw new NotFoundException('Document not found');
+        }
+
+        await this.prisma.documentTask.deleteMany({ where: { documentId: document.id } });
+
         return this.prisma.document.delete({
             where,
         });
@@ -79,5 +100,24 @@ export class DocumentsService {
             failed,
             pending
         };
+    }
+
+    private async ensureProjectTask(projectId: string, document: Document) {
+        await this.prisma.documentTask.upsert({
+            where: { documentId: document.id },
+            update: {
+                title: document.title,
+                description: 'Dokumentet er klart til å fylles ut når analysen er ferdig.',
+                flowType: 'DOCUMENT',
+            },
+            create: {
+                projectId,
+                documentId: document.id,
+                title: document.title,
+                description: 'Dokumentet er klart til å fylles ut når analysen er ferdig.',
+                flowType: 'DOCUMENT',
+                status: 'PENDING',
+            },
+        });
     }
 }

@@ -1,0 +1,78 @@
+{
+  "default": {
+    "name": "Standard prosjektleveranse",
+    "description": "Basismal når kunden skal levere en komplett prosjektmappe for en ISO-jobb.",
+    "tasks": [
+      {
+        "key": "kickoff",
+        "title": "Planlegg prosjekt og kickoff",
+        "description": "Definer ansvarlige, tidslinje og hvilken ISO-standard som skal følges.",
+        "flowType": "PLANNING",
+        "initialStatus": "PENDING",
+        "dueInDays": 2
+      },
+      {
+        "key": "collect-documentation",
+        "title": "Samle eksisterende dokumentasjon",
+        "description": "Be kunden laste opp alle dokumentene som skal inn i mappen (policy, rutiner, rapporter).",
+        "flowType": "DOCUMENT",
+        "initialStatus": "PENDING",
+        "dueInDays": 5
+      },
+      {
+        "key": "gap-review",
+        "title": "Gjennomfør gap-analyse",
+        "description": "Bruk gap analysis-verktøyet for å sjekke hvilke krav som ikke er fylt ut enda.",
+        "flowType": "ANALYSIS",
+        "initialStatus": "PENDING",
+        "dueInDays": 10
+      },
+      {
+        "key": "final-package",
+        "title": "Sett sammen prosjektmappen",
+        "description": "Sikre at alle dokumentene er fylt ut og godkjent før levering.",
+        "flowType": "DELIVERY",
+        "initialStatus": "PENDING",
+        "dueInDays": 14
+      }
+    ]
+  },
+  "internal-audit": {
+    "name": "Intern revisjon",
+    "description": "Flow til intern revisjon hvor dokumenter må oppdateres og logges underveis.",
+    "tasks": [
+      {
+        "key": "scope",
+        "title": "Definer revisjonsomfang",
+        "description": "Avklar hvilke områder og dokumenter som inngår i denne revisjonen.",
+        "flowType": "PLANNING",
+        "initialStatus": "PENDING",
+        "dueInDays": 1
+      },
+      {
+        "key": "collect-evidence",
+        "title": "Samle bevis",
+        "description": "Last opp dokumentasjon og logger som skal brukes i revisjonen.",
+        "flowType": "DOCUMENT",
+        "initialStatus": "PENDING",
+        "dueInDays": 3
+      },
+      {
+        "key": "review-findings",
+        "title": "Evaluer funn",
+        "description": "Gå gjennom avvik og dokumenter nødvendige tiltak.",
+        "flowType": "ANALYSIS",
+        "initialStatus": "PENDING",
+        "dueInDays": 6
+      },
+      {
+        "key": "close-audit",
+        "title": "Fullfør revisjonen",
+        "description": "Godkjenn dokumentene og marker revisjonen som ferdig.",
+        "flowType": "DELIVERY",
+        "initialStatus": "PENDING",
+        "dueInDays": 8
+      }
+    ]
+  }
+}

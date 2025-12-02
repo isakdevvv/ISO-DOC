@@ -8,6 +8,10 @@ const mockPrismaService = {
         findMany: jest.fn(),
         create: jest.fn(),
     },
+    documentTask: {
+        upsert: jest.fn(),
+        deleteMany: jest.fn(),
+    },
 };
 
 describe('DocumentsService', () => {

@@ -12,6 +12,8 @@ import { SearchModule } from './modules/search/search.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { PrismaService } from './prisma.service';
+import { ProjectsModule } from './modules/projects/projects.module';
+import { TemplatesModule } from './modules/templates/templates.module';
 
 @Module({
     imports: [
@@ -24,6 +26,8 @@ import { PrismaService } from './prisma.service';
         ComplianceModule,
         NotificationsModule,
         IsoStandardsModule,
+        ProjectsModule,
+        TemplatesModule,
     ],
     controllers: [],
     providers: [PrismaService],

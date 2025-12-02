@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --copilot-kit-background-color: #ffffff;
+  --copilot-kit-text-color: #171717;
+  --copilot-kit-border-color: #e5e7eb;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+/* CopilotKit Overrides */
+[data-copilotkit-sidebar] {
+  background-color: var(--copilot-kit-background-color);
+  color: var(--copilot-kit-text-color);
+  border-color: var(--copilot-kit-border-color);
+  opacity: 1;
+  /* Ensure not invisible */
+  backdrop-filter: none;
+  /* Ensure no blur */
+  box-shadow: -4px 0 15px rgba(0, 0, 0, 0.1);
+  /* Keep shadow for definition */
+}
+
+/* Specific overrides for common chat elements if the above is not enough */
+/* These are educated guesses and may need adjustment based on inspection */
+[data-copilotkit-sidebar] .copilot-chat-input-container,
+[data-copilotkit-sidebar] .copilot-message-bubble,
+[data-copilotkit-sidebar] .copilot-chat-feed {
+  background-color: var(--copilot-kit-background-color);
+  color: var(--copilot-kit-text-color);
+  border-color: var(--copilot-kit-border-color);
+}
+
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Keep form text readable on light inputs regardless of theme */
+input,
+select,
+textarea {
+  color: #111827;
+  background-color: #ffffff;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #6b7280;
+}

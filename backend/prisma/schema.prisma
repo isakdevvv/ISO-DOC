@@ -22,6 +22,7 @@ model Document {
   filePath  String   // Path to the original file
   status    String   @default("PENDING") // PENDING, PROCESSED, ANALYZED
   batchId   String?  // ID to group bulk uploads
+  projectId String?
   
   // Metadata
   author          String?
@@ -37,6 +38,8 @@ model Document {
   updatedAt DateTime @updatedAt
   chunks    DocumentChunk[]
   reports   ComplianceReport[]
+  project   Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  tasks     DocumentTask[]
 }
 
 
@@ -108,4 +111,45 @@ model Notification {
   type      String   // INFO, SUCCESS, WARNING, ERROR
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
+}
+
+model Project {
+  id          String        @id @default(uuid())
+  name        String
+  clientName  String?
+  description String?
+  status      String        @default("ACTIVE")
+  flowKey     String        @default("default")
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  documents   Document[]
+  tasks       DocumentTask[]
+}
+
+model DocumentTask {
+  id          String    @id @default(uuid())
+  projectId   String
+  documentId  String?   @unique
+  title       String
+  description String?
+  flowType    String
+  status      String    @default("PENDING")
+  dueAt       DateTime?
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  document    Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+}
+
+model Template {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  category    String   // e.g., "Policy", "Procedure", "Form"
+  content     Json     // Structured content (e.g., JSON schema or Rich Text)
+  version     Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
