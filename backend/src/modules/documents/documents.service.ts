@@ -1,10 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma.service';
 import { Document, Prisma } from '@prisma/client';
+import { IngestionService } from '../ingestion/ingestion.service';
 
 @Injectable()
 export class DocumentsService {
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private prisma: PrismaService,
+        private ingestionService: IngestionService,
+    ) { }
 
     async document(
         documentWhereUniqueInput: Prisma.DocumentWhereUniqueInput,
@@ -35,5 +39,45 @@ export class DocumentsService {
         return this.prisma.document.create({
             data,
         });
+    }
+
+    async updateDocument(params: {
+        where: Prisma.DocumentWhereUniqueInput;
+        data: Prisma.DocumentUpdateInput;
+    }): Promise<Document> {
+        const { where, data } = params;
+        return this.prisma.document.update({
+            data,
+            where,
+        });
+    }
+
+    async deleteDocument(where: Prisma.DocumentWhereUniqueInput): Promise<Document> {
+        return this.prisma.document.delete({
+            where,
+        });
+    }
+
+    async getBatchStats(batchId: string) {
+        const stats = await this.prisma.document.groupBy({
+            by: ['status'],
+            where: { batchId },
+            _count: {
+                id: true
+            }
+        });
+
+        const total = stats.reduce((acc, curr) => acc + curr._count.id, 0);
+        const processed = stats.find(s => s.status === 'STAGED')?._count.id || 0;
+        const failed = stats.find(s => s.status === 'ERROR')?._count.id || 0;
+        const pending = stats.find(s => s.status === 'UPLOADING' || s.status === 'PENDING')?._count.id || 0;
+
+        return {
+            batchId,
+            total,
+            processed,
+            failed,
+            pending
+        };
     }
 }

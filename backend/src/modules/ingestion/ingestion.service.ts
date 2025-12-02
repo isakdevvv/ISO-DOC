@@ -7,12 +7,17 @@ const pdf = require('pdf-parse');
 
 import * as fs from 'fs';
 
+import { NotificationsService } from '../notifications/notifications.service';
+
 @Injectable()
 export class IngestionService {
     private readonly logger = new Logger(IngestionService.name);
     private embeddings: OpenAIEmbeddings;
 
-    constructor(private prisma: PrismaService) {
+    constructor(
+        private prisma: PrismaService,
+        private notificationsService: NotificationsService
+    ) {
         this.embeddings = new OpenAIEmbeddings({
             apiKey: process.env.OPENROUTER_API_KEY,
             configuration: {
@@ -22,8 +27,8 @@ export class IngestionService {
         });
     }
 
-    async ingestDocument(documentId: string) {
-        this.logger.log(`Starting ingestion for document ${documentId}`);
+    async stageDocument(documentId: string) {
+        this.logger.log(`Starting staging for document ${documentId}`);
 
         const document = await this.prisma.document.findUnique({
             where: { id: documentId },
@@ -51,45 +56,109 @@ export class IngestionService {
 
             this.logger.log(`Created ${chunks.length} chunks for document ${documentId}`);
 
-            // 4. Generate Embeddings & Save
-            for (const [index, chunk] of chunks.entries()) {
-                const embedding = await this.embeddings.embedQuery(chunk.pageContent);
+            // 4. Save Chunks (WITHOUT Embeddings)
+            // Using transaction to ensure atomicity
+            await this.prisma.$transaction(async (tx) => {
+                // Clear existing chunks if any (re-staging)
+                await tx.documentChunk.deleteMany({ where: { documentId } });
 
-                // Save to DB
-                await this.prisma.$executeRaw`
-                    INSERT INTO "DocumentChunk" ("id", "content", "embedding", "documentId", "pageNumber", "updatedAt")
-                    VALUES (
-                        gen_random_uuid(),
-                        ${chunk.pageContent},
-                        ${embedding}::vector,
-                        ${documentId},
-                        ${index + 1},
-                        NOW()
-                    )
-                `;
-            }
+                for (const [index, chunk] of chunks.entries()) {
+                    await tx.documentChunk.create({
+                        data: {
+                            content: chunk.pageContent,
+                            pageNumber: index + 1,
+                            documentId: documentId,
+                            // embedding is null by default
+                        }
+                    });
+                }
 
-            // Update status and metadata
+                // Update status and metadata
+                await tx.document.update({
+                    where: { id: documentId },
+                    data: {
+                        status: 'STAGED',
+                        author: metadata.metadata?.author || 'Unknown',
+                        summary: metadata.metadata?.summary || 'No summary',
+                        docType: metadata.metadata?.docType || 'Other',
+                        extractedData: metadata // Save full JSON
+                    },
+                });
+            });
+
+            this.logger.log(`Staging complete for document ${documentId}`);
+
+        } catch (error) {
+            this.logger.error(`Staging failed: ${error.message}`, error.stack);
             await this.prisma.document.update({
                 where: { id: documentId },
                 data: {
-                    status: 'ANALYZED',
-                    author: metadata.author,
-                    summary: metadata.summary,
-                    docType: metadata.docType,
-                    // publicationDate: metadata.publicationDate ? new Date(metadata.publicationDate) : null 
+                    status: 'ERROR',
+                    errorMessage: error.message
                 },
             });
+            throw error;
+        }
+    }
 
-            this.logger.log(`Ingestion complete for document ${documentId}`);
+    async commitDocument(documentId: string) {
+        this.logger.log(`Committing document ${documentId} (Generating Embeddings)`);
 
-        } catch (error) {
-            this.logger.error(`Ingestion failed: ${error.message}`, error.stack);
+        const document = await this.prisma.document.findUnique({
+            where: { id: documentId },
+            include: { chunks: true }
+        });
+
+        if (!document || document.status !== 'STAGED') {
+            throw new Error(`Document ${documentId} is not in STAGED status`);
+        }
+
+        try {
+            // Generate Embeddings & Update Chunks
+            for (const chunk of document.chunks) {
+                const embedding = await this.embeddings.embedQuery(chunk.content);
+
+                // Save embedding using raw query for vector type
+                await this.prisma.$executeRaw`
+                    UPDATE "DocumentChunk"
+                    SET "embedding" = ${embedding}::vector
+                    WHERE "id" = ${chunk.id}
+                `;
+            }
+
+            // Update status
             await this.prisma.document.update({
                 where: { id: documentId },
-                data: { status: 'ERROR' },
+                data: { status: 'ANALYZED' },
             });
+
+            this.logger.log(`Commit complete for document ${documentId}`);
+
+            // Notify Success
+            await this.notificationsService.create({
+                title: 'Analysis Complete',
+                message: `Document "${document.title}" has been successfully analyzed and added to the knowledge base.`,
+                type: 'SUCCESS'
+            });
+
+        } catch (error) {
+            this.logger.error(`Commit failed: ${error.message}`, error.stack);
+
+            // Notify Failure
+            await this.notificationsService.create({
+                title: 'Analysis Failed',
+                message: `Failed to analyze document "${document.title}": ${error.message}`,
+                type: 'ERROR'
+            });
+
+            throw error;
         }
+    }
+
+    // Deprecated: Kept for backward compatibility if needed, but redirects to new flow
+    async ingestDocument(documentId: string) {
+        await this.stageDocument(documentId);
+        await this.commitDocument(documentId);
     }
 
     private async extractMetadata(text: string): Promise<any> {
@@ -101,25 +170,46 @@ export class IngestionService {
             configuration: {
                 baseURL: 'https://openrouter.ai/api/v1',
             },
-            modelName: 'openai/gpt-3.5-turbo', // Use a cheap/fast model for metadata
+            modelName: 'openai/gpt-4o-mini', // Better model for structured extraction
             temperature: 0,
         });
 
         const prompt = `
-            You are an expert ISO compliance auditor. Extract the following metadata from the document text provided below.
-            Return ONLY a valid JSON object with these fields:
-            - author: The author or organization (string)
-            - summary: A brief summary of the document (string)
-            - docType: One of "Policy", "Procedure", "Standard", "Record", "Other" (string)
-            - publicationDate: The publication date if found (YYYY-MM-DD string), otherwise null.
+            You are an expert ISO compliance auditor and data extractor. 
+            Analyze the document text provided below and extract a COMPLETE structured representation.
+            
+            Return ONLY a valid JSON object with the following structure:
+            {
+                "metadata": {
+                    "author": "string",
+                    "title": "string",
+                    "date": "YYYY-MM-DD or null",
+                    "version": "string or null",
+                    "docType": "Policy | Procedure | Standard | Record | Other",
+                    "summary": "string"
+                },
+                "structure": {
+                    "sections": [
+                        {
+                            "title": "Section Title",
+                            "content": "Summary or key content of section",
+                            "clauses": [
+                                { "id": "1.1", "title": "Clause Title", "text": "Full text of clause" }
+                            ]
+                        }
+                    ]
+                },
+                "key_entities": ["List of important entities/roles mentioned"],
+                "definitions": [{"term": "Term", "definition": "Definition"}]
+            }
 
-            Document Text (first 3000 chars):
-            ${text.substring(0, 3000)}
+            Document Text (first 15000 chars):
+            ${text.substring(0, 15000)}
         `;
 
         try {
             const response = await chat.invoke([
-                new SystemMessage("You are a helpful assistant that extracts metadata as JSON."),
+                new SystemMessage("You are a helpful assistant that extracts structured data as JSON."),
                 new HumanMessage(prompt),
             ]);
 
@@ -129,14 +219,43 @@ export class IngestionService {
             return JSON.parse(jsonString);
         } catch (e) {
             this.logger.error("Failed to extract metadata", e);
-            return { author: "Unknown", summary: "Auto-extraction failed", docType: "Other" };
+            return {
+                metadata: { author: "Unknown", summary: "Auto-extraction failed", docType: "Other" },
+                structure: { sections: [] }
+            };
         }
     }
 
-    private async extractText(filePath: string): Promise<string> {
+    async search(query: string, limit: number = 5): Promise<any[]> {
+        const embedding = await this.embeddings.embedQuery(query);
+        const results = await this.prisma.$queryRaw`
+            SELECT "content", "documentId", 1 - ("embedding" <=> ${embedding}::vector) as similarity
+            FROM "DocumentChunk"
+            ORDER BY similarity DESC
+            LIMIT ${limit};
+        `;
+        return results as any[];
+    }
 
+    private async extractText(filePath: string): Promise<string> {
+        const ext = filePath.split('.').pop()?.toLowerCase();
         const dataBuffer = fs.readFileSync(filePath);
-        const data = await pdf(dataBuffer);
-        return data.text;
+
+        switch (ext) {
+            case 'pdf':
+                const data = await pdf(dataBuffer);
+                return data.text;
+            case 'json':
+                const jsonData = JSON.parse(dataBuffer.toString('utf-8'));
+                return JSON.stringify(jsonData, null, 2);
+            case 'txt':
+                return dataBuffer.toString('utf-8');
+            case 'docx':
+                const mammoth = require('mammoth');
+                const result = await mammoth.extractRawText({ buffer: dataBuffer });
+                return result.value;
+            default:
+                throw new Error(`Unsupported file type: .${ext}`);
+        }
     }
 }

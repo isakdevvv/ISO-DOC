@@ -5,8 +5,6 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma.service';
 import { PrismaTestHelper } from '../src/test-utils/prisma-test.helper';
 import { IngestionService } from '../src/modules/ingestion/ingestion.service';
-import * as path from 'path';
-import * as fs from 'fs';
 
 describe('DocumentsController (e2e)', () => {
     let app: INestApplication;
@@ -22,6 +20,8 @@ describe('DocumentsController (e2e)', () => {
             .overrideProvider(IngestionService)
             .useValue({
                 ingestDocument: jest.fn().mockResolvedValue(undefined),
+                stageDocument: jest.fn().mockResolvedValue(undefined),
+                commitDocument: jest.fn().mockResolvedValue(undefined),
             })
             .compile();
 
@@ -41,7 +41,6 @@ describe('DocumentsController (e2e)', () => {
     });
 
     it('/documents (GET) should return empty array initially', async () => {
-        // We might have data from other tests if we don't clean, so just check status
         const response = await request(app.getHttpServer())
             .get('/documents')
             .expect(200);
@@ -49,14 +48,23 @@ describe('DocumentsController (e2e)', () => {
         expect(Array.isArray(response.body)).toBe(true);
     });
 
-    // Skip upload test if it's flaky, but let's try with buffer
-    // it('/documents (POST) should upload a file', async () => {
-    //   const response = await request(app.getHttpServer())
-    //     .post('/documents')
-    //     .attach('file', Buffer.from('dummy content'), 'test-doc.txt')
-    //     .expect(201);
+    it('/documents (POST) should upload files', async () => {
+        const response = await request(app.getHttpServer())
+            .post('/documents')
+            .attach('files', Buffer.from('dummy content'), 'test-doc.txt')
+            .expect(201);
 
-    //   expect(response.body).toHaveProperty('id');
-    //   expect(response.body.title).toBe('test-doc.txt');
-    // });
+        expect(Array.isArray(response.body)).toBe(true);
+        expect(response.body[0]).toHaveProperty('id');
+        expect(response.body[0].title).toBe('test-doc.txt');
+    });
+
+    it('/documents/commit (POST) should commit documents', async () => {
+        const response = await request(app.getHttpServer())
+            .post('/documents/commit')
+            .send({ documentIds: ['doc-1'] })
+            .expect(201);
+
+        expect(Array.isArray(response.body)).toBe(true);
+    });
 });

@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Param } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param } from '@nestjs/common';
 import { ComplianceService } from './compliance.service';
 
 @Controller('compliance')
@@ -11,5 +11,14 @@ export class ComplianceController {
         @Body('isoStandardId') isoStandardId: string,
     ) {
         return this.complianceService.checkCompliance(documentId, isoStandardId);
+    }
+
+    @Get('reports/:id')
+    async getReport(@Param('id') id: string) {
+        return this.complianceService.getReport(id);
+    }
+    @Get('gap-analysis/:isoStandardId')
+    async runGapAnalysis(@Param('isoStandardId') isoStandardId: string) {
+        return this.complianceService.runGapAnalysis(isoStandardId);
     }
 }

@@ -44,3 +44,25 @@ This document defines the roles, responsibilities, and workflows for the AI agen
 2.  **Compliance Analyst** retrieves all relevant documents.
 3.  **Compliance Analyst** builds the matrix.
 4.  **Gap Reporter** takes the matrix and writes the final report.
+
+## Agent Collaboration Protocol (Safety Rules)
+
+To ensure multiple agents can work on this project simultaneously without conflicts, all agents must adhere to the following rules:
+
+### 1. File System Safety
+- **Atomic Writes**: When writing to files, always write to a temporary file first and then rename it to the target filename to prevent partial reads.
+- **Locking**: If editing a shared configuration file (e.g., `package.json`), check for lock files or coordinate via the user.
+- **Absolute Paths**: Always use absolute paths derived from the workspace root.
+
+### 2. Database Safety
+- **Migrations**: Never run `prisma migrate dev` automatically if another agent might be modifying the schema. Always verify schema state first.
+- **Idempotency**: Ensure all API endpoints and service methods are idempotent. Retrying a failed job should not duplicate data.
+
+### 3. Testing & Verification
+- **Pre-Commit Tests**: Before marking a task as complete, run the relevant test suite (`npm run test`).
+- **No Broken Builds**: Leave the main branch in a buildable state. If you break it, fix it immediately.
+
+### 4. Communication
+- **Task Boundaries**: Clearly define what you are working on in `task.md`. Do not pick up a task marked as "In Progress" by another agent.
+- **Artifact Updates**: Keep `implementation_plan.md` and `walkthrough.md` updated so other agents know the current architectural state.
+

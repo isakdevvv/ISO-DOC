@@ -72,27 +72,67 @@ export class ComplianceService {
         // 2. For each Standard Chunk (Requirement), search for relevant Document Chunks.
         // 3. Ask LLM: "Does the document satisfy this requirement?"
 
-        for (const stdChunk of standardChunks) {
-            // Find relevant document chunks
-            const relevantDocChunks = await this.findRelevantDocumentChunks(stdChunk.embedding, documentId);
+        // Process chunks in batches to avoid rate limits but improve speed
+        const BATCH_SIZE = 5;
+        for (let i = 0; i < standardChunks.length; i += BATCH_SIZE) {
+            const batch = standardChunks.slice(i, i + BATCH_SIZE);
 
-            const context = relevantDocChunks.map(c => c.content).join('\n---\n');
+            await Promise.all(batch.map(async (stdChunk) => {
+                // Find relevant document chunks
+                const relevantDocChunks = await this.findRelevantDocumentChunks(stdChunk.embedding, documentId);
 
-            const complianceStatus = await this.evaluateRequirement(stdChunk.content, context);
+                const context = relevantDocChunks.map(c => c.content).join('\n---\n');
 
-            results.push({
-                requirement: stdChunk.content.substring(0, 100) + '...',
-                status: complianceStatus.status,
-                reasoning: complianceStatus.reasoning,
-                evidence: complianceStatus.evidence
-            });
+                const complianceStatus = await this.evaluateRequirement(stdChunk.content, context);
+
+                results.push({
+                    requirement: stdChunk.content.substring(0, 100) + '...',
+                    status: complianceStatus.status,
+                    reasoning: complianceStatus.reasoning,
+                    evidence: complianceStatus.evidence,
+                    clauseNumber: stdChunk.clauseNumber
+                });
+            }));
         }
 
-        return {
-            documentId,
-            isoStandardId,
-            results
-        };
+        // Calculate overall score (simple percentage of COMPLIANT)
+        const compliantCount = results.filter(r => r.status === 'COMPLIANT').length;
+        const overallScore = (compliantCount / results.length) * 100;
+
+        // Save Report to DB
+        const report = await this.prisma.complianceReport.create({
+            data: {
+                documentId,
+                isoStandardId,
+                status: 'COMPLETED',
+                overallScore,
+                results: {
+                    create: results.map(r => ({
+                        requirement: r.requirement,
+                        status: r.status,
+                        reasoning: r.reasoning,
+                        evidence: r.evidence,
+                        clauseNumber: r.clauseNumber // Assuming we can get this from stdChunk later
+                    }))
+                }
+            },
+            include: {
+                results: true
+            }
+        });
+
+        return report;
+    }
+
+    async getReport(id: string) {
+        return this.prisma.complianceReport.findUnique({
+            where: { id },
+            include: {
+                results: true,
+                document: true,
+                isoStandard: true
+            }
+        });
     }
 
     private async findRelevantDocumentChunks(embedding: any, documentId: string, limit = 3) {
@@ -146,6 +186,75 @@ export class ComplianceService {
         } catch (e) {
             this.logger.error("LLM evaluation failed", e);
             return { status: "ERROR", reasoning: "LLM failed", evidence: "" };
+        }
+    }
+    async runGapAnalysis(isoStandardId: string) {
+        const standard = await this.prisma.isoStandard.findUnique({ where: { id: isoStandardId } });
+        if (!standard || !standard.requiredDocuments) {
+            throw new NotFoundException('ISO Standard not found or not analyzed');
+        }
+
+        // Get all user documents
+        const userDocs = await this.prisma.document.findMany({
+            select: { id: true, title: true, docType: true, summary: true, extractedData: true }
+        });
+
+        const requiredDocs = standard.requiredDocuments as any[];
+        const gapReport = [];
+
+        for (const reqDoc of requiredDocs) {
+            // Simple matching logic: Check if any user doc matches the type or title fuzzily
+            // Ideally, we would use LLM to match, but let's do a basic check first + LLM verification if needed.
+
+            // For MVP: Let's ask LLM to find the best match from the list
+            const match = await this.findBestDocumentMatch(reqDoc, userDocs);
+
+            gapReport.push({
+                requiredDocument: reqDoc,
+                status: match ? 'FULFILLED' : 'MISSING',
+                matchedDocument: match
+            });
+        }
+
+        return {
+            standardId: standard.id,
+            standardTitle: standard.title,
+            gapAnalysis: gapReport
+        };
+    }
+
+    private async findBestDocumentMatch(requiredDoc: any, userDocs: any[]) {
+        if (userDocs.length === 0) return null;
+
+        const prompt = `
+            I need to find if we have a document that satisfies this requirement.
+            
+            REQUIRED DOCUMENT:
+            Title: ${requiredDoc.title}
+            Type: ${requiredDoc.type}
+            Description: ${requiredDoc.description}
+
+            AVAILABLE USER DOCUMENTS:
+            ${userDocs.map(d => `- ID: ${d.id}, Title: ${d.title}, Type: ${d.docType}, Summary: ${d.summary}`).join('\n')}
+
+            Task: Return the ID of the best matching document, or "null" if none match.
+            Return ONLY the ID string or "null".
+        `;
+
+        try {
+            const response = await this.chat.invoke([
+                new SystemMessage("You are a helpful assistant."),
+                new HumanMessage(prompt)
+            ]);
+
+            const content = response.content.toString().trim();
+            if (content.toLowerCase().includes('null')) return null;
+
+            // Clean up ID if needed
+            const matchedId = content.replace(/['"]/g, '');
+            return userDocs.find(d => d.id === matchedId) || null;
+        } catch (e) {
+            return null;
         }
     }
 }

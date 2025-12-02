@@ -21,16 +21,22 @@ model Document {
   content   String?  // Extracted text content
   filePath  String   // Path to the original file
   status    String   @default("PENDING") // PENDING, PROCESSED, ANALYZED
+  batchId   String?  // ID to group bulk uploads
   
   // Metadata
   author          String?
   summary         String?
   docType         String?
   publicationDate DateTime?
+  extractedData   Json?    // Full structured extraction from LLM
+  errorMessage    String?  // Reason for failure if status is ERROR
+  reviewData      Json?    // Inline review form for staged docs
+  remediationForm Json?    // Remediation form for analyzed docs
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   chunks    DocumentChunk[]
+  reports   ComplianceReport[]
 }
 
 
@@ -54,10 +60,12 @@ model IsoStandard {
   // Metadata
   standardId      String? // e.g. "ISO 27001:2022"
   publicationDate DateTime?
+  requiredDocuments Json? // List of required documents extracted from the standard
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   chunks    IsoStandardChunk[]
+  reports   ComplianceReport[]
 }
 
 model IsoStandardChunk {
@@ -68,4 +76,36 @@ model IsoStandardChunk {
   isoStandardId String
   isoStandard   IsoStandard @relation(fields: [isoStandardId], references: [id], onDelete: Cascade)
   createdAt     DateTime @default(now())
+}
+
+model ComplianceReport {
+  id            String   @id @default(uuid())
+  documentId    String
+  document      Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  isoStandardId String
+  isoStandard   IsoStandard @relation(fields: [isoStandardId], references: [id], onDelete: Cascade)
+  status        String   @default("COMPLETED") // COMPLETED, FAILED, IN_PROGRESS
+  overallScore  Float?   // 0-100
+  createdAt     DateTime @default(now())
+  results       ComplianceResult[]
+}
+
+model ComplianceResult {
+  id                 String           @id @default(uuid())
+  complianceReportId String
+  complianceReport   ComplianceReport @relation(fields: [complianceReportId], references: [id], onDelete: Cascade)
+  requirement        String
+  status             String           // COMPLIANT, NON_COMPLIANT, PARTIAL, NOT_APPLICABLE
+  reasoning          String?
+  evidence           String?
+  clauseNumber       String?
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  title     String
+  message   String
+  type      String   // INFO, SUCCESS, WARNING, ERROR
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
 }

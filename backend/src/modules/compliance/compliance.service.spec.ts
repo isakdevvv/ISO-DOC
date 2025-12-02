@@ -28,6 +28,9 @@ const mockPrismaService = {
     isoStandard: {
         findUnique: jest.fn(),
     },
+    complianceReport: {
+        create: jest.fn(),
+    },
     $queryRaw: jest.fn(),
 };
 
@@ -83,13 +86,38 @@ describe('ComplianceService', () => {
                     },
                 ]);
 
+            // Mock complianceReport.create
+            const mockReport = {
+                id: 'report-1',
+                documentId,
+                isoStandardId,
+                status: 'COMPLETED',
+                overallScore: 100,
+                results: [
+                    {
+                        requirement: 'Requirement 1...',
+                        status: 'COMPLIANT',
+                        reasoning: 'Matches requirements',
+                        evidence: 'Found evidence',
+                        clauseNumber: '1.1'
+                    }
+                ]
+            };
+            mockPrismaService.complianceReport.create.mockResolvedValue(mockReport);
+
             const result = await service.checkCompliance(documentId, isoStandardId);
 
+            if ('message' in result) {
+                throw new Error('Expected successful result, got error: ' + result.message);
+            }
+
             expect(result).toBeDefined();
+            expect(result.id).toBe('report-1');
             expect(result.documentId).toBe(documentId);
             expect(result.isoStandardId).toBe(isoStandardId);
             expect(result.results).toHaveLength(1);
             expect(result.results[0].status).toBe('COMPLIANT');
+            expect(mockPrismaService.complianceReport.create).toHaveBeenCalled();
         });
 
         it('should throw NotFoundException if document not found', async () => {

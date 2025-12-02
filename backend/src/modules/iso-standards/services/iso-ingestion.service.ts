@@ -36,10 +36,21 @@ export class IsoIngestionService {
             // 1. Extract Text
             const text = await this.extractText(standard.filePath);
 
-            // 2. Chunk Text (TODO: Improve chunking to respect clauses)
+            // 2. Chunk Text
             const splitter = new RecursiveCharacterTextSplitter({
                 chunkSize: 1000,
                 chunkOverlap: 200,
+                separators: [
+                    "\n\\d+\\.\\d+\\.\\d+\\.\\d+ ", // 1.1.1.1
+                    "\n\\d+\\.\\d+\\.\\d+ ",       // 1.1.1
+                    "\n\\d+\\.\\d+ ",             // 1.1
+                    "\n\\d+\\. ",                 // 1.
+                    "\n\n",
+                    "\n",
+                    " ",
+                    "",
+                ],
+                keepSeparator: true,
             });
             const chunks = await splitter.createDocuments([text]);
 
@@ -61,10 +72,17 @@ export class IsoIngestionService {
             `;
             }
 
+            // Extract Required Documents
+            const requiredDocs = await this.extractRequiredDocuments(text);
+            this.logger.log(`Extracted ${requiredDocs.length} required documents`);
+
             // Update status
             await this.prisma.isoStandard.update({
                 where: { id: standardId },
-                data: { status: 'ANALYZED' },
+                data: {
+                    status: 'ANALYZED',
+                    requiredDocuments: requiredDocs
+                },
             });
 
             this.logger.log(`Ingestion complete for standard ${standardId}`);
@@ -82,5 +100,49 @@ export class IsoIngestionService {
         const dataBuffer = fs.readFileSync(filePath);
         const data = await pdf(dataBuffer);
         return data.text;
+    }
+
+    private async extractRequiredDocuments(text: string): Promise<any[]> {
+        const { ChatOpenAI } = await import("@langchain/openai");
+        const { HumanMessage, SystemMessage } = await import("@langchain/core/messages");
+
+        const chat = new ChatOpenAI({
+            apiKey: process.env.OPENROUTER_API_KEY,
+            configuration: {
+                baseURL: 'https://openrouter.ai/api/v1',
+            },
+            modelName: 'openai/gpt-4o-mini',
+            temperature: 0,
+        });
+
+        const prompt = `
+            You are an expert ISO consultant. Analyze the ISO Standard text below and identify all "Documented Information" (Policies, Procedures, Records, Plans) that are explicitly REQUIRED.
+            
+            Return ONLY a valid JSON array of objects:
+            [
+                {
+                    "title": "Information Security Policy",
+                    "type": "Policy",
+                    "description": "High level policy on info sec",
+                    "clause": "5.2"
+                }
+            ]
+
+            Standard Text (first 15000 chars):
+            ${text.substring(0, 15000)}
+        `;
+
+        try {
+            const response = await chat.invoke([
+                new SystemMessage("You are a helpful assistant that extracts required documents as JSON."),
+                new HumanMessage(prompt),
+            ]);
+
+            const content = response.content.toString().replace(/```json/g, '').replace(/```/g, '').trim();
+            return JSON.parse(content);
+        } catch (e) {
+            this.logger.error("Failed to extract required documents", e);
+            return [];
+        }
     }
 }

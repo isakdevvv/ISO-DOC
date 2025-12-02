@@ -9,6 +9,10 @@ jest.mock('pdf-parse', () => {
     return jest.fn().mockResolvedValue({ text: 'Mock PDF content' });
 });
 
+jest.mock('mammoth', () => ({
+    extractRawText: jest.fn().mockResolvedValue({ value: 'Docx Content' }),
+}));
+
 jest.mock('@langchain/openai', () => {
     return {
         OpenAIEmbeddings: jest.fn().mockImplementation(() => ({
@@ -103,10 +107,53 @@ describe('IngestionService', () => {
 
         it('should handle errors during ingestion', async () => {
             const documentId = 'doc-1';
-            mockPrismaService.document.findUnique.mockResolvedValue({ id: documentId, filePath: 'path' });
+            mockPrismaService.document.findUnique.mockResolvedValue({ id: documentId, filePath: 'path.pdf' });
             (fs.readFileSync as jest.Mock).mockImplementation(() => {
                 throw new Error('File read error');
             });
+
+            await service.ingestDocument(documentId);
+
+            expect(prisma.document.update).toHaveBeenCalledWith({
+                where: { id: documentId },
+                data: { status: 'ERROR' },
+            });
+        });
+
+        it('should ingest JSON files', async () => {
+            const documentId = 'doc-json';
+            mockPrismaService.document.findUnique.mockResolvedValue({ id: documentId, filePath: 'test.json' });
+            (fs.readFileSync as jest.Mock).mockReturnValue(Buffer.from(JSON.stringify({ key: 'value' })));
+
+            await service.ingestDocument(documentId);
+
+            expect(prisma.$executeRaw).toHaveBeenCalled();
+        });
+
+        it('should ingest TXT files', async () => {
+            const documentId = 'doc-txt';
+            mockPrismaService.document.findUnique.mockResolvedValue({ id: documentId, filePath: 'test.txt' });
+            (fs.readFileSync as jest.Mock).mockReturnValue(Buffer.from('Plain text content'));
+
+            await service.ingestDocument(documentId);
+
+            expect(prisma.$executeRaw).toHaveBeenCalled();
+        });
+
+        it('should ingest DOCX files', async () => {
+            const documentId = 'doc-docx';
+            mockPrismaService.document.findUnique.mockResolvedValue({ id: documentId, filePath: 'test.docx' });
+            (fs.readFileSync as jest.Mock).mockReturnValue(Buffer.from('dummy docx'));
+
+            await service.ingestDocument(documentId);
+
+            expect(prisma.$executeRaw).toHaveBeenCalled();
+        });
+
+        it('should throw error for unsupported file types', async () => {
+            const documentId = 'doc-unknown';
+            mockPrismaService.document.findUnique.mockResolvedValue({ id: documentId, filePath: 'test.xyz' });
+            (fs.readFileSync as jest.Mock).mockReturnValue(Buffer.from('dummy'));
 
             await service.ingestDocument(documentId);
 

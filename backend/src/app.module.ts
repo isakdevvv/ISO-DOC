@@ -7,19 +7,25 @@ import { IngestionModule } from './modules/ingestion/ingestion.module';
 import { IsoStandardsModule } from './modules/iso-standards/iso-standards.module';
 import { ComplianceModule } from './modules/compliance/compliance.module';
 import { RedisModule } from './modules/redis/redis.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { SearchModule } from './modules/search/search.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { PrismaService } from './prisma.service';
 
 @Module({
     imports: [
-        ConfigModule.forRoot({
-            isGlobal: true,
-        }),
-        RedisModule,
+        ConfigModule.forRoot({ isGlobal: true }),
+        AuthModule,
         DocumentsModule,
         IngestionModule,
+        SearchModule,
+        DashboardModule,
+        ComplianceModule,
+        NotificationsModule,
         IsoStandardsModule,
-        ComplianceModule
     ],
     controllers: [],
-    providers: [],
+    providers: [PrismaService],
 })
 export class AppModule { }
