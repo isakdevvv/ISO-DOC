@@ -61,14 +61,29 @@ import { useCopilotReadable } from "@copilotkit/react-core";
 function SystemPromptManager() {
     const [systemPrompt, setSystemPrompt] = useState<string>("");
 
-    useEffect(() => {
-        fetchTenant('ea7404bc-dd8d-47bc-a178-a1e1d62c92ea')
+    const loadSystemPrompt = () => {
+        fetchTenant('termoteam')
             .then(t => {
                 if (t.agentSettings?.systemPrompt) {
                     setSystemPrompt(t.agentSettings.systemPrompt);
                 }
             })
             .catch(err => console.error("Failed to load system prompt", err));
+    };
+
+    useEffect(() => {
+        // Load initially
+        loadSystemPrompt();
+
+        // Listen for custom event to reload
+        const handleRefresh = () => {
+            loadSystemPrompt();
+        };
+
+        window.addEventListener('systemPromptUpdated', handleRefresh);
+        return () => {
+            window.removeEventListener('systemPromptUpdated', handleRefresh);
+        };
     }, []);
 
     useCopilotReadable({
@@ -85,17 +100,24 @@ export default function Providers({ children }: PropsWithChildren) {
     // This ensures that project context doesn't leak into other areas
     const copilotKey = pathname?.startsWith('/app/projects/') ? pathname : 'global';
 
+    // Don't initialize CopilotKit on unauthenticated pages (login) to prevent GraphQL errors
+    const isAuthPage = pathname === '/login';
+
     return (
         <SessionProvider refetchOnWindowFocus={false}>
-            <CopilotKit
-                runtimeUrl="/api/copilot"
-                properties={{ surface: "iso-doc-ui" }}
-                key={copilotKey}
-            >
-                <SystemPromptManager />
-                <CopilotBackendActions />
-                {children}
-            </CopilotKit>
+            {isAuthPage ? (
+                children
+            ) : (
+                <CopilotKit
+                    runtimeUrl="/api/copilot"
+                    properties={{ surface: "iso-doc-ui" }}
+                    key={copilotKey}
+                >
+                    <SystemPromptManager />
+                    <CopilotBackendActions />
+                    {children}
+                </CopilotKit>
+            )}
         </SessionProvider>
     );
 }

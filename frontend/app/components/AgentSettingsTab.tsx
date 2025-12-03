@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { fetchTenant, updateTenant, Tenant } from '@/lib/api';
 
-const DEFAULT_TENANT_ID = 'ea7404bc-dd8d-47bc-a178-a1e1d62c92ea';
+const DEFAULT_TENANT_ID = 'termoteam';
 
 export default function AgentSettingsTab() {
     const [tenant, setTenant] = useState<Tenant | null>(null);
@@ -42,7 +42,10 @@ export default function AgentSettingsTab() {
             await updateTenant(tenant.id, {
                 agentSettings: updatedSettings,
             });
-            setMessage({ type: 'success', text: 'Settings saved successfully' });
+            setMessage({ type: 'success', text: 'Settings saved successfully. The copilot will use the new prompt immediately.' });
+
+            // Notify SystemPromptManager to refresh
+            window.dispatchEvent(new Event('systemPromptUpdated'));
         } catch (err) {
             console.error('Failed to save settings', err);
             setMessage({ type: 'error', text: 'Failed to save settings' });

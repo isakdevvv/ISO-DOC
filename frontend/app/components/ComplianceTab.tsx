@@ -8,10 +8,12 @@ import {
     fetchLatestRequirements,
     fetchRuleConflicts,
     runRuleEngine,
+    fetchProjects,
     Node,
     RuleSet,
     RequirementsModel,
     RuleConflict,
+    Project,
     isAuthenticationError,
 } from '@/lib/api';
 import dynamic from 'next/dynamic';
@@ -19,8 +21,6 @@ import dynamic from 'next/dynamic';
 const ConflictResolver = dynamic(() => import('./ConflictResolver'), {
     loading: () => <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50">Loading...</div>,
 });
-
-const PROJECT_ID = 'default-project-id';
 
 type RequirementDoc = {
     code?: string;
@@ -38,6 +38,8 @@ type RequirementField = {
 };
 
 export default function ComplianceTab() {
+    const [projects, setProjects] = useState<Project[]>([]);
+    const [selectedProjectId, setSelectedProjectId] = useState<string>('');
     const [nodes, setNodes] = useState<Node[]>([]);
     const [ruleSets, setRuleSets] = useState<RuleSet[]>([]);
     const [selectedRuleSetId, setSelectedRuleSetId] = useState<string>('');
@@ -48,16 +50,22 @@ export default function ComplianceTab() {
     const [analyzing, setAnalyzing] = useState(false);
 
     useCopilotReadable({
+        description: 'Projects available for the compliance workspace',
+        value: projects.map(({ id, name }) => ({ id, name })),
+        available: projects.length ? 'enabled' : 'disabled',
+    }, [projects]);
+
+    useCopilotReadable({
+        description: 'Selected project powering the compliance workspace',
+        value: selectedProjectId,
+        available: selectedProjectId ? 'enabled' : 'disabled',
+    }, [selectedProjectId]);
+
+    useCopilotReadable({
         description: 'Nodes visible in the compliance workspace',
         value: nodes,
         available: nodes.length ? 'enabled' : 'disabled',
     }, [nodes]);
-
-    useCopilotReadable({
-        description: 'Available rule sets for compliance workspace',
-        value: ruleSets,
-        available: ruleSets.length ? 'enabled' : 'disabled',
-    }, [ruleSets]);
 
     useCopilotReadable({
         description: 'Latest requirements model powering the gap summary',
@@ -66,32 +74,71 @@ export default function ComplianceTab() {
     }, [requirements]);
 
     useEffect(() => {
-        loadWorkspace();
+        (async () => {
+            try {
+                setLoadingWorkspace(true);
+                const availableProjects = await fetchProjects();
+                setProjects(availableProjects);
+                const defaultProjectId = availableProjects[0]?.id;
+                if (defaultProjectId) {
+                    await loadWorkspace(defaultProjectId);
+                } else {
+                    clearWorkspaceState();
+                }
+            } catch (err) {
+                if (isAuthenticationError(err)) {
+                    return;
+                }
+                console.error('Failed to initialize compliance workspace', err);
+            } finally {
+                setLoadingWorkspace(false);
+            }
+        })();
     }, []);
 
-    async function loadWorkspace() {
+    function clearWorkspaceState() {
+        setSelectedProjectId('');
+        setNodes([]);
+        setRuleSets([]);
+        setRequirements(null);
+        setConflicts([]);
+        setSelectedRuleSetId('');
+    }
+
+    async function fetchWorkspace(projectId: string) {
+        const [
+            fetchedNodes,
+            fetchedRuleSets,
+            latestRequirements,
+            fetchedConflicts,
+        ] = await Promise.all([
+            fetchNodes(projectId),
+            fetchRuleSets(projectId),
+            fetchLatestRequirements(projectId),
+            fetchRuleConflicts(projectId, 'OPEN'),
+        ]);
+
+        setSelectedProjectId(projectId);
+        setNodes(fetchedNodes);
+        setRuleSets(fetchedRuleSets);
+        setRequirements(latestRequirements);
+        setConflicts(fetchedConflicts);
+        setSelectedRuleSetId((current) => {
+            if (current && fetchedRuleSets.some((ruleSet) => ruleSet.id === current)) {
+                return current;
+            }
+            return fetchedRuleSets[0]?.id || '';
+        });
+    }
+
+    async function loadWorkspace(targetProjectId = selectedProjectId) {
+        if (!targetProjectId) {
+            clearWorkspaceState();
+            return;
+        }
         try {
             setLoadingWorkspace(true);
-            const [
-                fetchedNodes,
-                fetchedRuleSets,
-                latestRequirements,
-                fetchedConflicts,
-            ] = await Promise.all([
-                fetchNodes(PROJECT_ID),
-                fetchRuleSets(PROJECT_ID),
-                fetchLatestRequirements(PROJECT_ID),
-                fetchRuleConflicts(PROJECT_ID, 'OPEN'),
-            ]);
-
-            setNodes(fetchedNodes);
-            setRuleSets(fetchedRuleSets);
-            setRequirements(latestRequirements);
-            setConflicts(fetchedConflicts);
-
-            if (fetchedRuleSets.length > 0) {
-                setSelectedRuleSetId(fetchedRuleSets[0].id);
-            }
+            await fetchWorkspace(targetProjectId);
         } catch (err) {
             if (isAuthenticationError(err)) {
                 return;
@@ -103,15 +150,19 @@ export default function ComplianceTab() {
     }
 
     async function handleAnalyze() {
+        if (!selectedProjectId) {
+            alert('Please select a project before running the audit.');
+            return;
+        }
         if (!selectedRuleSetId) {
             alert('Please select at least one Rule Set.');
             return;
         }
         setAnalyzing(true);
         try {
-            const report = await runRuleEngine(PROJECT_ID, { ruleSetIds: [selectedRuleSetId] });
+            const report = await runRuleEngine(selectedProjectId, { ruleSetIds: [selectedRuleSetId] });
             alert(`Compliance evaluation started (ID: ${report.evaluationId}). Refresh to see updated gaps.`);
-            await loadWorkspace();
+            await loadWorkspace(selectedProjectId);
         } catch (err: any) {
             if (!isAuthenticationError(err)) {
                 alert(`Compliance check failed: ${err?.message ?? 'Unknown error'}`);
@@ -126,13 +177,18 @@ export default function ComplianceTab() {
         description: 'Run compliance audit against a Rule Set.',
         parameters: [
             { name: 'ruleSetId', type: 'string', description: 'ID of the Rule Set', required: true },
+            { name: 'projectId', type: 'string', description: 'ID of the project to evaluate', required: false },
         ],
-        handler: async ({ ruleSetId }) => {
+        handler: async ({ ruleSetId, projectId }) => {
+            const targetProjectId = projectId || selectedProjectId;
+            if (!targetProjectId) {
+                return { status: 'error', message: 'No project selected for audit' };
+            }
             setSelectedRuleSetId(ruleSetId);
             setAnalyzing(true);
             try {
-                const report = await runRuleEngine(PROJECT_ID, { ruleSetIds: [ruleSetId] });
-                await loadWorkspace();
+                const report = await runRuleEngine(targetProjectId, { ruleSetIds: [ruleSetId] });
+                await loadWorkspace(targetProjectId);
                 return { status: 'ok', evaluationId: report.evaluationId };
             } catch (err: any) {
                 if (isAuthenticationError(err)) {
@@ -251,13 +307,27 @@ export default function ComplianceTab() {
 
                 <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
                     <h2 className="text-xl font-semibold text-gray-900 mb-4">Compliance Audit</h2>
-                    <p className="text-sm text-gray-500 mb-6">Select a rule set and run a new audit. The result will update the gap summary above.</p>
+                    <p className="text-sm text-gray-500 mb-6">Select a project and rule set, then run a new audit. The result will update the gap summary above.</p>
+
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Project</label>
+                    <select
+                        value={selectedProjectId}
+                        onChange={(e) => loadWorkspace(e.target.value)}
+                        className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-3 mb-4"
+                        disabled={loadingWorkspace || projects.length === 0}
+                    >
+                        {projects.map((project) => (
+                            <option key={project.id} value={project.id}>{project.name}</option>
+                        ))}
+                        {projects.length === 0 && <option value="">No projects available</option>}
+                    </select>
 
                     <label className="block text-sm font-medium text-gray-700 mb-2">Rule Set</label>
                     <select
                         value={selectedRuleSetId}
                         onChange={(e) => setSelectedRuleSetId(e.target.value)}
                         className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-3"
+                        disabled={!selectedProjectId || ruleSets.length === 0}
                     >
                         {ruleSets.map((rs) => (
                             <option key={rs.id} value={rs.id}>{rs.title} ({rs.code})</option>
@@ -267,7 +337,7 @@ export default function ComplianceTab() {
 
                     <button
                         onClick={handleAnalyze}
-                        disabled={analyzing || !selectedRuleSetId}
+                        disabled={analyzing || !selectedRuleSetId || !selectedProjectId}
                         className="w-full mt-6 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 flex items-center justify-center gap-2"
                     >
                         {analyzing ? (

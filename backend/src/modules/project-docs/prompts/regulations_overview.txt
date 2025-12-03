@@ -1,0 +1,7 @@
+Lag en oversikt over relevante lover, forskrifter og standarder for et CO₂-anlegg. Oppgi minst:
+- Internkontrollforskriften
+- Arbeidsmiljøloven §3-1
+- PED/trykksatt utstyr
+- NS-EN 378-serien (del 1 og 4)
+- Eventuelle kunde- eller kjedekrav (bruk placeholder hvis ukjent)
+Strukturer teksten med overskrifter og korte beskrivelser av hvordan prosjektet ivaretar hvert punkt. Norsk språk, Markdown-format.

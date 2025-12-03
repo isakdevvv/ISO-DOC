@@ -190,6 +190,59 @@ export interface Project {
     updatedAt: string;
 }
 
+export interface AuditChecklistItem {
+    id: string;
+    clause?: string | null;
+    title: string;
+    owner?: string | null;
+    status: string;
+    notes?: string | null;
+    orderIndex: number;
+}
+
+export interface AuditFinding {
+    id: string;
+    title: string;
+    severity: string;
+    owner?: string | null;
+    dueDate?: string | null;
+    status: string;
+    description?: string | null;
+}
+
+export interface AuditAction {
+    id: string;
+    title: string;
+    owner?: string | null;
+    status: string;
+    dueDate?: string | null;
+    description?: string | null;
+}
+
+export interface Audit {
+    id: string;
+    tenantId: string;
+    projectId?: string | null;
+    name: string;
+    standard: string;
+    type: string;
+    scope?: string | null;
+    owner?: string | null;
+    status: string;
+    startDate: string;
+    endDate: string;
+    metadata?: Record<string, unknown> | null;
+    checklist: AuditChecklistItem[];
+    findings: AuditFinding[];
+    actions: AuditAction[];
+    project?: {
+        id: string;
+        name: string | null;
+    } | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
 export interface ProjectFlowTemplate {
     key: string;
     name: string;
@@ -245,6 +298,64 @@ export async function createProjectTask(projectId: string, data: { title: string
 export async function fetchProject(id: string): Promise<Project> {
     const res = await fetchWithAuth(`${API_URL}/projects/${id}`);
     if (!res.ok) throw new Error('Failed to fetch project');
+    return res.json();
+}
+
+export interface CreateAuditPayload {
+    tenantId?: string;
+    projectId?: string;
+    name: string;
+    standard: string;
+    type: string;
+    scope?: string;
+    owner?: string;
+    status?: string;
+    startDate: string;
+    endDate: string;
+    metadata?: Record<string, unknown>;
+    checklist?: Array<{
+        title: string;
+        clause?: string;
+        owner?: string;
+        status?: string;
+        notes?: string;
+    }>;
+    findings?: Array<{
+        title: string;
+        severity?: string;
+        owner?: string;
+        dueDate?: string;
+        status?: string;
+        description?: string;
+    }>;
+    actions?: Array<{
+        title: string;
+        owner?: string;
+        dueDate?: string;
+        status?: string;
+        description?: string;
+    }>;
+}
+
+export async function fetchAudits(): Promise<Audit[]> {
+    const res = await fetchWithAuth(`${API_URL}/audits`);
+    if (!res.ok) throw new Error('Failed to fetch audits');
+    return res.json();
+}
+
+export async function fetchAudit(id: string): Promise<Audit> {
+    const res = await fetchWithAuth(`${API_URL}/audits/${id}`);
+    if (!res.ok) throw new Error('Failed to fetch audit');
+    return res.json();
+}
+
+export async function createAudit(data: CreateAuditPayload): Promise<Audit> {
+    const res = await fetchWithAuth(`${API_URL}/audits`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Failed to create audit');
     return res.json();
 }
 

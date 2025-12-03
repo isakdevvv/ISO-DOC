@@ -1,0 +1,7 @@
+Lag en kort forside- og innledningstekst til internkontroll-boken. Bruk prosjektdataene (kundenavn, anleggsnavn, prosjektleder, commissioning-dato, medium). Inkluder:
+- Tittel: «Internkontroll for [SITE_NAME]»
+- Kunde og bestiller
+- Prosjekt-/ordrenummer
+- Prosjektleder og driftsansvarlig (bruk [Fyll inn ...] hvis ukjent)
+- Kort beskrivelse (1–2 avsnitt) av anlegget og formålet med dokumentet
+Teksten skal være på norsk og klar for DOCX som ren Markdown uten kodeblokker.

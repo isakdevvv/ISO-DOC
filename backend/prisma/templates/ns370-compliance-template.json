@@ -1,0 +1,561 @@
+{
+    "template_id": "NS370_COMPLIANCE",
+    "version": "1.0.0",
+    "title": "Internkontroll: CO₂-kulde- og fryseanlegg – NS 370",
+    "description": "Komplett dokumentasjonspakke for CO2-anlegg iht. NS EN 378 og PED 2014/68/EU med Kiuva 3-mannskontroll",
+    "sections": [
+        {
+            "id": "cover_toc",
+            "title": "1. Forside og innholdsfortegnelse",
+            "fields": [
+                {
+                    "id": "document_title",
+                    "label": "Dokumenttittel",
+                    "type": "text",
+                    "required": true,
+                    "autoFilled": true,
+                    "placeholder": "Internkontroll: CO₂-kulde- og fryseanlegg – NS 370"
+                },
+                {
+                    "id": "facility_name",
+                    "label": "Anleggsnavn",
+                    "type": "text",
+                    "required": true,
+                    "autoFilled": true,
+                    "preferredSources": [
+                        "PROJECT_FACTS"
+                    ]
+                },
+                {
+                    "id": "facility_address",
+                    "label": "Adresse",
+                    "type": "text",
+                    "required": true,
+                    "autoFilled": true,
+                    "preferredSources": [
+                        "PROJECT_FACTS"
+                    ]
+                },
+                {
+                    "id": "installation_date",
+                    "label": "Installasjonsdato",
+                    "type": "date",
+                    "autoFilled": true,
+                    "preferredSources": [
+                        "PROJECT_FACTS"
+                    ]
+                },
+                {
+                    "id": "responsible_company",
+                    "label": "Ansvarlig firma",
+                    "type": "text",
+                    "required": true,
+                    "userOnly": true,
+                    "placeholder": "TermoTeam AS"
+                },
+                {
+                    "id": "version_number",
+                    "label": "Versjonsnummer",
+                    "type": "text",
+                    "required": true,
+                    "autoFilled": true,
+                    "placeholder": "1.0"
+                },
+                {
+                    "id": "revision_history",
+                    "label": "Revisjonshistorikk",
+                    "type": "table",
+                    "description": "Oversikt over dokumentrevisjoner",
+                    "autoFilled": false
+                }
+            ]
+        },
+        {
+            "id": "purpose_scope",
+            "title": "2. Formål og omfang",
+            "fields": [
+                {
+                    "id": "purpose_statement",
+                    "label": "Formål",
+                    "type": "textarea",
+                    "required": true,
+                    "autoFilled": true,
+                    "placeholder": "Sikre sikker drift og samsvar med NS EN 378-serien..."
+                },
+                {
+                    "id": "scope_ns_en_378",
+                    "label": "Omfang NS EN 378",
+                    "type": "textarea",
+                    "description": "Dekker Del 1–4 av NS EN 378 standarden",
+                    "autoFilled": true,
+                    "preferredSources": [
+                        "RULE_EVALUATION",
+                        "REQUIREMENTS_MODEL"
+                    ]
+                },
+                {
+                    "id": "ce_marking_scope",
+                    "label": "CE-merking omfang",
+                    "type": "textarea",
+                    "description": "Dekke CE‑merking av rør og fordamper som inngår i allerede CE‑merket CO₂‑maskineri",
+                    "autoFilled": true
+                },
+                {
+                    "id": "kiuva_organization",
+                    "label": "Kiuva 3-mannskontroll organisering",
+                    "type": "textarea",
+                    "description": "Utførelse, verifikasjon, godkjenning",
+                    "userOnly": true
+                }
+            ]
+        },
+        {
+            "id": "regulations",
+            "title": "3. Regelverk og standardreferanser",
+            "fields": [
+                {
+                    "id": "ns_en_378_references",
+                    "label": "NS‑EN 378‑1 til ‑4 referanser",
+                    "type": "table",
+                    "description": "Sikkerhet, dokumentasjon, drift, merking",
+                    "required": true,
+                    "autoFilled": true,
+                    "topK": 10,
+                    "preferredSources": [
+                        "RULE_EVALUATION"
+                    ]
+                },
+                {
+                    "id": "internkontroll_forskrift",
+                    "label": "Internkontrollforskriften § 4–5",
+                    "type": "text",
+                    "autoFilled": true,
+                    "placeholder": "Krav til systematisk HMS"
+                },
+                {
+                    "id": "maskinforskrift",
+                    "label": "Maskinforskriften & CE‑merking",
+                    "type": "textarea",
+                    "autoFilled": true
+                },
+                {
+                    "id": "tek17_reference",
+                    "label": "TEK17 § 15‑4",
+                    "type": "text",
+                    "description": "For kulde-/varmeinstallasjoner",
+                    "autoFilled": true
+                }
+            ]
+        },
+        {
+            "id": "organization_responsibility",
+            "title": "4. Organisering og ansvar",
+            "fields": [
+                {
+                    "id": "org_chart",
+                    "label": "Organisasjonskart",
+                    "type": "file",
+                    "description": "Organisasjonskart med ansvar",
+                    "userOnly": true
+                },
+                {
+                    "id": "kiuva_roles",
+                    "label": "Kiuva-roller",
+                    "type": "table",
+                    "description": "Montør, kontrollør, godkjenner",
+                    "required": true,
+                    "userOnly": true
+                },
+                {
+                    "id": "contact_list",
+                    "label": "Kontaktliste",
+                    "type": "table",
+                    "required": true,
+                    "userOnly": true,
+                    "description": "Navn, rolle, telefon, e-post"
+                }
+            ]
+        },
+        {
+            "id": "risk_assessment",
+            "title": "5. Risikovurdering (NS EN 378-1)",
+            "fields": [
+                {
+                    "id": "pressure_co2_risk",
+                    "label": "Trykkpåkjent CO₂-medie",
+                    "type": "textarea",
+                    "description": "Kartlegging av risiko",
+                    "autoFilled": true,
+                    "preferredSources": [
+                        "RULE_EVALUATION",
+                        "PROJECT_FACTS"
+                    ]
+                },
+                {
+                    "id": "leakage_risk",
+                    "label": "Lekkasjerisiko",
+                    "type": "textarea",
+                    "autoFilled": true,
+                    "preferredSources": [
+                        "RULE_EVALUATION"
+                    ]
+                },
+                {
+                    "id": "frost_damage_risk",
+                    "label": "Frostskaderisiko",
+                    "type": "textarea",
+                    "autoFilled": true
+                },
+                {
+                    "id": "gas_detection_requirements",
+                    "label": "Gassdeteksjonsbehov",
+                    "type": "textarea",
+                    "required": true,
+                    "autoFilled": true,
+                    "preferredSources": [
+                        "COMPONENT_DATA",
+                        "RULE_EVALUATION"
+                    ]
+                },
+                {
+                    "id": "risk_mitigation",
+                    "label": "Risikonivå og tiltak",
+                    "type": "table",
+                    "description": "Ventilasjon, alarm, trykktesting, etc.",
+                    "required": true,
+                    "autoFilled": true,
+                    "preferredSources": [
+                        "RULE_EVALUATION"
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "ce_marking",
+            "title": "6. CE‑merking av rør og fordamper",
+            "fields": [
+                {
+                    "id": "component_specifications",
+                    "label": "Spesifiserte komponentdata",
+                    "type": "table",
+                    "description": "Produsent, modell, produksjonsdato, materialer",
+                    "required": true,
+                    "autoFilled": true,
+                    "preferredSources": [
+                        "COMPONENT_DATA",
+                        "MANUFACTURER_DOC"
+                    ],
+                    "topK": 5
+                },
+                {
+                    "id": "compliance_declarations",
+                    "label": "Samsvarserklæringer",
+                    "type": "file_list",
+                    "description": "Dokumenter samsvarserklæringer og samsvar med harmoniserte standarder",
+                    "required": true,
+                    "autoFilled": true,
+                    "preferredSources": [
+                        "MANUFACTURER_DOC"
+                    ]
+                },
+                {
+                    "id": "ce_marking_verification",
+                    "label": "Kontroll av merking",
+                    "type": "checklist",
+                    "description": "CE-logo, ID‑nummer, ytelseserklæring",
+                    "required": true,
+                    "userOnly": true
+                }
+            ]
+        },
+        {
+            "id": "installation_routines",
+            "title": "7. Installasjonsrutiner",
+            "fields": [
+                {
+                    "id": "ns_en_378_2_checklist",
+                    "label": "Sjekkliste etter NS EN 378‑2 og NS 370",
+                    "type": "checklist",
+                    "description": "Rør- og sveiseinspeksjon, isolasjon, systemintegrasjon, trykk- og lekkasjetest",
+                    "required": true,
+                    "userOnly": true
+                },
+                {
+                    "id": "pipe_weld_inspection",
+                    "label": "Rør- og sveiseinspeksjon",
+                    "type": "checklist",
+                    "required": true,
+                    "userOnly": true
+                },
+                {
+                    "id": "insulation_verification",
+                    "label": "Isolasjon",
+                    "type": "checklist",
+                    "required": true,
+                    "userOnly": true
+                },
+                {
+                    "id": "system_integration",
+                    "label": "Systemintegrasjon med CO₂‑maskin",
+                    "type": "textarea",
+                    "autoFilled": true,
+                    "preferredSources": [
+                        "COMPONENT_DATA",
+                        "PROJECT_FACTS"
+                    ]
+                },
+                {
+                    "id": "pressure_leak_test",
+                    "label": "Trykk- og lekkasjetest",
+                    "type": "checklist",
+                    "required": true,
+                    "userOnly": true,
+                    "description": "Dokumentasjon av gjennomført trykkprøve og lekkasjetest"
+                },
+                {
+                    "id": "kiuva_signatures_installation",
+                    "label": "Kiuva-signering",
+                    "type": "signature_group",
+                    "description": "Utførelse, verifikasjon, godkjenning",
+                    "required": true,
+                    "userOnly": true
+                }
+            ]
+        },
+        {
+            "id": "operation_self_control",
+            "title": "8. Egenkontroll og drift (NS EN 378-4)",
+            "fields": [
+                {
+                    "id": "inspection_schedule",
+                    "label": "Regelmessige kontroller",
+                    "type": "table",
+                    "description": "Årlig/månedlig/daglig inspeksjonsplan",
+                    "required": true,
+                    "autoFilled": true,
+                    "preferredSources": [
+                        "COMPONENT_DATA",
+                        "MANUFACTURER_DOC"
+                    ]
+                },
+                {
+                    "id": "pressure_monitoring",
+                    "label": "Trykknivå-overvåking",
+                    "type": "textarea",
+                    "autoFilled": true,
+                    "preferredSources": [
+                        "COMPONENT_DATA"
+                    ]
+                },
+                {
+                    "id": "leak_rate_tracking",
+                    "label": "Lekkasjetall oppfølging",
+                    "type": "textarea",
+                    "required": true,
+                    "userOnly": true
+                },
+                {
+                    "id": "cleaning_procedures",
+                    "label": "Rengjøring",
+                    "type": "textarea",
+                    "autoFilled": true,
+                    "preferredSources": [
+                        "MANUFACTURER_DOC"
+                    ]
+                },
+                {
+                    "id": "gas_alarm_testing",
+                    "label": "Gassalarm testing",
+                    "type": "textarea",
+                    "required": true,
+                    "autoFilled": true,
+                    "preferredSources": [
+                        "COMPONENT_DATA"
+                    ]
+                },
+                {
+                    "id": "log_templates",
+                    "label": "Loggskjemaer og oversikt",
+                    "type": "file_list",
+                    "userOnly": true
+                }
+            ]
+        },
+        {
+            "id": "deviation_handling",
+            "title": "9. Avvikshåndtering",
+            "fields": [
+                {
+                    "id": "deviation_report_template",
+                    "label": "Avviksrapport mal",
+                    "type": "template",
+                    "description": "Standardisert avviksrapport med risikoklasse",
+                    "autoFilled": true
+                },
+                {
+                    "id": "risk_classification",
+                    "label": "Risikoklassifisering",
+                    "type": "select",
+                    "options": [
+                        "Lav",
+                        "Middels",
+                        "Høy",
+                        "Kritisk"
+                    ],
+                    "userOnly": true
+                },
+                {
+                    "id": "responsible_for_closure",
+                    "label": "Ansvarlig for lukking av avvik",
+                    "type": "text",
+                    "userOnly": true
+                },
+                {
+                    "id": "action_plan",
+                    "label": "Tiltaksplan med frister og oppfølging",
+                    "type": "table",
+                    "userOnly": true
+                }
+            ]
+        },
+        {
+            "id": "maintenance_spare_parts",
+            "title": "10. Vedlikehold og reservedeler",
+            "fields": [
+                {
+                    "id": "maintenance_plan",
+                    "label": "Vedlikeholdsplan og intervaller",
+                    "type": "table",
+                    "required": true,
+                    "autoFilled": true,
+                    "preferredSources": [
+                        "COMPONENT_DATA",
+                        "MANUFACTURER_DOC"
+                    ],
+                    "topK": 10
+                },
+                {
+                    "id": "critical_spare_parts",
+                    "label": "Liste over kritiske reservedeler",
+                    "type": "table",
+                    "autoFilled": true,
+                    "preferredSources": [
+                        "MANUFACTURER_DOC",
+                        "COMPONENT_DATA"
+                    ]
+                },
+                {
+                    "id": "fdv_documentation_ref",
+                    "label": "Referanse til produsentens FDV‑dokumentasjon",
+                    "type": "file_list",
+                    "autoFilled": true,
+                    "preferredSources": [
+                        "MANUFACTURER_DOC"
+                    ]
+                },
+                {
+                    "id": "pipe_handling_manual",
+                    "label": "Rørhåndbok",
+                    "type": "file",
+                    "autoFilled": true,
+                    "preferredSources": [
+                        "MANUFACTURER_DOC"
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "management_review",
+            "title": "11. Ledelsens gjennomgang",
+            "fields": [
+                {
+                    "id": "annual_summary",
+                    "label": "Årlig oppsummering",
+                    "type": "textarea",
+                    "description": "Kontrollresultater, avvik, forbedringer",
+                    "userOnly": true
+                },
+                {
+                    "id": "control_results",
+                    "label": "Kontrollresultater",
+                    "type": "table",
+                    "userOnly": true
+                },
+                {
+                    "id": "deviations_overview",
+                    "label": "Avvik oversikt",
+                    "type": "table",
+                    "userOnly": true
+                },
+                {
+                    "id": "improvement_suggestions",
+                    "label": "Forbedringsforslag",
+                    "type": "textarea",
+                    "userOnly": true
+                },
+                {
+                    "id": "budget_requirements",
+                    "label": "Beslutningsvedtak og budsjettbehov",
+                    "type": "textarea",
+                    "userOnly": true
+                }
+            ]
+        },
+        {
+            "id": "appendices",
+            "title": "12. Vedlegg",
+            "fields": [
+                {
+                    "id": "full_compliance_declarations",
+                    "label": "Fullstendige samsvarserklæringer",
+                    "type": "file_list",
+                    "autoFilled": true,
+                    "preferredSources": [
+                        "MANUFACTURER_DOC"
+                    ]
+                },
+                {
+                    "id": "ce_marking_documentation",
+                    "label": "CE‑merkedokumentasjon",
+                    "type": "file_list",
+                    "autoFilled": true,
+                    "preferredSources": [
+                        "MANUFACTURER_DOC"
+                    ]
+                },
+                {
+                    "id": "internal_control_forms",
+                    "label": "Internkontrollskjemaer med signaturfelt",
+                    "type": "file_list",
+                    "userOnly": true
+                },
+                {
+                    "id": "risk_matrix_copy",
+                    "label": "Kopi av risikomatrise",
+                    "type": "file",
+                    "autoFilled": true
+                }
+            ]
+        }
+    ],
+    "metadata": {
+        "tags": [
+            "NS370",
+            "CO2",
+            "PED",
+            "Kiuva",
+            "NS_EN_378"
+        ],
+        "requiredKiuvaSignatures": true,
+        "pedCompliance": true,
+        "standardReferences": [
+            "NS EN 378-1",
+            "NS EN 378-2",
+            "NS EN 378-3",
+            "NS EN 378-4",
+            "PED 2014/68/EU",
+            "TEK17 § 15-4",
+            "Internkontrollforskriften § 4-5"
+        ]
+    }
+}

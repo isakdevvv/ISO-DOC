@@ -1,0 +1,1 @@
+Lag en kort oversikt over CE-merket utstyr i anlegget. Inkluder tabell-lignende tekst med kolonner: Utstyr, Produsent, Sertifikat/standard, Kommentar. Hvis data mangler, bruk placeholders som [Fyll inn produsent]. Markdown med Heading «Oversikt CE-merket utstyr» etterfulgt av en tabell. Språk: norsk.

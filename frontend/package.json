@@ -16,15 +16,22 @@
     "@copilotkit/react-core": "^1.10.6",
     "@copilotkit/react-ui": "^1.10.6",
     "@copilotkit/runtime": "^1.10.6",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-slot": "^1.2.4",
     "@rjsf/core": "^6.1.2",
     "@rjsf/mui": "^6.1.2",
     "@rjsf/utils": "^6.1.2",
     "@rjsf/validator-ajv8": "^6.1.2",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "lucide-react": "^0.555.0",
     "next": "16.0.6",
     "next-auth": "^4.24.13",
     "react": "19.2.0",
-    "react-dom": "19.2.0"
+    "react-dom": "19.2.0",
+    "reactflow": "^11.11.4",
+    "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",

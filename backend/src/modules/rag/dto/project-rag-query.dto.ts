@@ -1,3 +1,5 @@
+import { IngestionMode, LegalClass } from '@prisma/client';
+
 export interface RagFieldQueryDto {
     fieldId: string;
     label: string;
@@ -12,4 +14,6 @@ export interface ProjectRagQueryDto {
     requirementsModel?: Record<string, any>;
     defaultTopK?: number;
     minScore?: number;
+    allowedLegalClasses?: LegalClass[];
+    allowedIngestionModes?: IngestionMode[];
 }

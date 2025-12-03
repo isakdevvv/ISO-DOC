@@ -1,0 +1,5 @@
+Lag et forslag til vedlikeholdsplan for CO₂-anlegget. Beskriv:
+- Periodiske inspeksjoner (ukentlig/månedlig/årlig)
+- Kritiske komponenter (kompressor, gassalarmer, ventiler)
+- Krav til dokumentasjon og reservedeler
+Avslutt med anbefaling om ansvar og eskaleringsrutiner. Markdown med overskrifter og punktlister.

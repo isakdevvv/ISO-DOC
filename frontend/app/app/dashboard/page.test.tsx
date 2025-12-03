@@ -49,7 +49,16 @@ describe('Dashboard Page', () => {
         vi.spyOn(window, 'alert').mockImplementation(() => undefined);
         (fetchNodes as any).mockResolvedValue([]);
         (fetchTasks as any).mockResolvedValue([]);
-        (fetchProjects as any).mockResolvedValue([]);
+        (fetchProjects as any).mockResolvedValue([{
+            id: 'project-123',
+            name: 'Demo Project',
+            tenantId: 'tenant-1',
+            tasks: [],
+            nodes: [],
+            documents: [],
+            createdAt: '',
+            updatedAt: '',
+        }]);
         (fetchTemplates as any).mockResolvedValue([]);
     });
 
@@ -67,7 +76,7 @@ describe('Dashboard Page', () => {
         mockSearchParams.get.mockReturnValue('compliance');
         const mockRequirements: any = {
             id: 'req-1',
-            projectId: 'default-project-id',
+            projectId: 'project-123',
             scope: 'FULL',
             version: 1,
             payload: {
@@ -109,7 +118,7 @@ describe('Dashboard Page', () => {
         fireEvent.click(runButton);
 
         await waitFor(() => {
-            expect(runRuleEngine).toHaveBeenCalledWith('default-project-id', { ruleSetIds: ['rs-1'] });
+            expect(runRuleEngine).toHaveBeenCalledWith('project-123', { ruleSetIds: ['rs-1'] });
         });
     });
 

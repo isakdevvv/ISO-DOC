@@ -5,7 +5,12 @@ describe('RuleEngineService helpers', () => {
     let service: RuleEngineService;
 
     beforeEach(() => {
-        service = new RuleEngineService({} as any);
+        const cacheStub = {
+            get: jest.fn(),
+            set: jest.fn(),
+            del: jest.fn(),
+        } as any;
+        service = new RuleEngineService({} as any, cacheStub);
     });
 
     it('evaluates nested conditions correctly', () => {

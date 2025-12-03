@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { IngestionJobType } from '@prisma/client';
+import { IngestionJobType, IngestionMode, LegalClass } from '@prisma/client';
 
 import { StorageService } from '@/common/storage/storage.service';
 import { PrismaService } from '@/prisma.service';
@@ -180,5 +180,21 @@ describe('IngestionService', () => {
                 status: 'CHECKSUM_FAILED',
             }),
         });
+    });
+
+    it('validates ingestion mode vs legal class when creating pending file', async () => {
+        mockPrismaService.project.findUnique.mockResolvedValue({ id: 'proj-1', tenantId: 'tenant-1' });
+
+        await expect(
+            service.requestUpload({
+                projectId: 'proj-1',
+                fileName: 'report.pdf',
+                mimeType: 'application/pdf',
+                size: 100,
+                checksum: 'abc',
+                legalClass: LegalClass.C,
+                ingestionMode: IngestionMode.FULLTEXT,
+            }),
+        ).rejects.toThrow('Ingestion mode FULLTEXT is not permitted for legal class C');
     });
 });

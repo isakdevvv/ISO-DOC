@@ -121,9 +121,14 @@ export default function DocumentDetailView({ documentId, onBack }: DocumentDetai
     useEffect(() => {
         if (documentId) {
             loadNode(documentId);
-            loadRuleSets();
         }
     }, [documentId]);
+
+    useEffect(() => {
+        if (node?.projectId) {
+            loadRuleSets(node.projectId);
+        }
+    }, [node?.projectId]);
 
     useEffect(() => {
         return () => {
@@ -155,9 +160,13 @@ export default function DocumentDetailView({ documentId, onBack }: DocumentDetai
         }
     }
 
-    async function loadRuleSets() {
+    async function loadRuleSets(projectId?: string) {
+        if (!projectId) {
+            setRuleSets([]);
+            return;
+        }
         try {
-            const data = await fetchRuleSets('default-project-id'); // TODO: dynamic project id
+            const data = await fetchRuleSets(projectId);
             setRuleSets(data);
         } catch (error) {
             console.error('Failed to fetch rule sets', error);
@@ -165,13 +174,12 @@ export default function DocumentDetailView({ documentId, onBack }: DocumentDetai
     }
 
     async function runAnalysis() {
-        if (!selectedRuleSetId || !node) return;
+        if (!selectedRuleSetId || !node?.projectId) return;
         setChecking(true);
         setComplianceResult(null);
 
         try {
-            // TODO: dynamic project id
-            const report = await runRuleEngine('default-project-id', { ruleSetIds: [selectedRuleSetId] });
+            const report = await runRuleEngine(node.projectId, { ruleSetIds: [selectedRuleSetId] });
             // Map report to complianceResult format if needed, or update UI to show report
             // For now, let's just show raw report or a simplified version
             setComplianceResult({

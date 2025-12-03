@@ -141,7 +141,10 @@ export default function ProjectsPage() {
 
     return (
         <div className="flex flex-col min-h-full bg-gray-50">
-            <Header />
+            <Header
+                title="Projects"
+                subtitle="Track implementations per standard and keep delivery health visible."
+            />
             <main className="flex-1 p-8">
                 <div className="max-w-6xl mx-auto space-y-8">
                     <div className="flex justify-between items-center">

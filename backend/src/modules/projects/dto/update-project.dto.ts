@@ -12,6 +12,38 @@ export class UpdateProjectDto {
 
     @IsOptional()
     @IsString()
+    customerName?: string;
+
+    @IsOptional()
+    @IsString()
+    projectNumber?: string;
+
+    @IsOptional()
+    @IsString()
+    siteName?: string;
+
+    @IsOptional()
+    @IsString()
+    siteAddress?: string;
+
+    @IsOptional()
+    @IsString()
+    orderNumber?: string;
+
+    @IsOptional()
+    @IsString()
+    offerNumber?: string;
+
+    @IsOptional()
+    @IsString()
+    installerCompany?: string;
+
+    @IsOptional()
+    @IsString()
+    projectManager?: string;
+
+    @IsOptional()
+    @IsString()
     address?: string;
 
     @IsOptional()
@@ -36,6 +68,10 @@ export class UpdateProjectDto {
     @IsOptional()
     @IsString()
     commissionedAt?: string;
+
+    @IsOptional()
+    @IsString()
+    commissioningDate?: string;
 
     @IsOptional()
     @IsString()

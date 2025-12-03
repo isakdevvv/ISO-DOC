@@ -1,4 +1,13 @@
-import { NodeRevisionChangeType, NodeStatus, PrismaClient, RuleSetScope } from '@prisma/client';
+import {
+    AuditActionStatus,
+    AuditChecklistStatus,
+    AuditFindingSeverity,
+    AuditStatus,
+    NodeRevisionChangeType,
+    NodeStatus,
+    PrismaClient,
+    RuleSetScope,
+} from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -44,6 +53,50 @@ type DemoEdgeSeed = {
     metadata?: Record<string, any>;
 };
 
+type DemoAuditChecklistSeed = {
+    id?: string;
+    title: string;
+    clause?: string;
+    owner?: string;
+    status?: AuditChecklistStatus;
+    notes?: string;
+};
+
+type DemoAuditFindingSeed = {
+    id?: string;
+    title: string;
+    severity?: AuditFindingSeverity;
+    owner?: string;
+    dueDate?: string;
+    status?: AuditStatus;
+    description?: string;
+};
+
+type DemoAuditActionSeed = {
+    id?: string;
+    title: string;
+    owner?: string;
+    dueDate?: string;
+    status?: AuditActionStatus;
+    description?: string;
+};
+
+type DemoAuditSeed = {
+    id: string;
+    name: string;
+    standard: string;
+    type: string;
+    scope?: string;
+    owner?: string;
+    status?: AuditStatus;
+    startDate: string;
+    endDate: string;
+    metadata?: Record<string, any>;
+    checklist?: DemoAuditChecklistSeed[];
+    findings?: DemoAuditFindingSeed[];
+    actions?: DemoAuditActionSeed[];
+};
+
 const COMPONENT_TYPES: ComponentTypeDefinition[] = [
     {
         code: 'CO2_COMPRESSOR',
@@ -68,6 +121,37 @@ const COMPONENT_TYPES: ComponentTypeDefinition[] = [
         fields: [
             { key: 'room', label: 'Plassering', type: 'text' },
             { key: 'airflow_m3h', label: 'Luftmengde (m³/h)', type: 'number' },
+        ],
+    },
+    {
+        code: 'CO2_PIPE',
+        name: 'CO₂-rør',
+        category: 'piping',
+        description: 'Trykkpåkjent rør for CO₂-anlegg med CE-merking.',
+        defaultFacts: { material: 'Rustfritt stål', designPressureBar: 55 },
+        defaultMetadata: { requiresCEMarking: true, pedCategory: 'III' },
+        fields: [
+            { key: 'diameter_mm', label: 'Diameter (mm)', type: 'number' },
+            { key: 'length_m', label: 'Lengde (m)', type: 'number' },
+            { key: 'material', label: 'Materiale', type: 'text' },
+            { key: 'ce_manufacturer', label: 'CE-produsent', type: 'text' },
+            { key: 'production_date', label: 'Produksjonsdato', type: 'date' },
+        ],
+    },
+    {
+        code: 'CO2_HEAT_EXCHANGER',
+        name: 'Varmeveksler/Fordamper (CE)',
+        category: 'core',
+        description: 'Trykkpåkjent varmeveksler med CE-merking for CO₂.',
+        defaultFacts: { designPressureBar: 60, designTemperatureC: -30 },
+        defaultMetadata: { requiresCEMarking: true, pedCategory: 'III' },
+        fields: [
+            { key: 'capacity_kw', label: 'Kapasitet (kW)', type: 'number' },
+            { key: 'manufacturer', label: 'Produsent', type: 'text' },
+            { key: 'model', label: 'Modell', type: 'text' },
+            { key: 'serial_number', label: 'Serienummer', type: 'text' },
+            { key: 'production_date', label: 'Produksjonsdato', type: 'date' },
+            { key: 'ce_declaration_ref', label: 'CE-samsvarserklæring ref.', type: 'text' },
         ],
     },
     {
@@ -264,6 +348,128 @@ const DEMO_EDGES: DemoEdgeSeed[] = [
     { from: 'node-demo-fdv', to: 'node-demo-risk', type: 'DEPENDS_ON' },
 ];
 
+const DEMO_AUDITS: DemoAuditSeed[] = [
+    {
+        id: 'audit-demo-iso27001',
+        name: 'ISO 27001 Surveillance Q1',
+        standard: 'ISO 27001',
+        type: 'Internal',
+        scope: 'Security controls, SOC, identity, vendor management',
+        owner: 'Line Fjelstad',
+        status: AuditStatus.IN_PROGRESS,
+        startDate: '2025-02-10',
+        endDate: '2025-02-14',
+        checklist: [
+            {
+                id: 'audit-demo-iso27001-item-1',
+                title: 'A.8 Asset Management register updated',
+                clause: 'A.8',
+                owner: 'Security Ops',
+                status: AuditChecklistStatus.COMPLIANT,
+                notes: 'Inventory matched ERP export 06.02',
+            },
+            {
+                id: 'audit-demo-iso27001-item-2',
+                title: 'A.12 Backup and restore testing evidence',
+                clause: 'A.12',
+                owner: 'Platform',
+                status: AuditChecklistStatus.NC,
+                notes: 'Missing signed evidence for January drill',
+            },
+            {
+                id: 'audit-demo-iso27001-item-3',
+                title: 'A.15 Supplier risk assessments',
+                clause: 'A.15',
+                owner: 'Vendor Management',
+                status: AuditChecklistStatus.OBS,
+                notes: 'Need mapping to new SLA template',
+            },
+        ],
+        findings: [
+            {
+                id: 'audit-demo-iso27001-finding-1',
+                title: 'Backup drill not approved',
+                severity: AuditFindingSeverity.HIGH,
+                owner: 'Ops',
+                dueDate: '2025-03-01',
+                status: AuditStatus.IN_PROGRESS,
+                description: 'Evidence missing for January drill approval.',
+            },
+            {
+                id: 'audit-demo-iso27001-finding-2',
+                title: 'Supplier SLA missing signature',
+                severity: AuditFindingSeverity.MEDIUM,
+                owner: 'Legal',
+                dueDate: '2025-02-25',
+                status: AuditStatus.PLANNED,
+                description: 'SLA template published but not signed.',
+            },
+        ],
+        actions: [
+            {
+                id: 'audit-demo-iso27001-action-1',
+                title: 'Plan new backup drill',
+                owner: 'Ops',
+                dueDate: '2025-02-20',
+                status: AuditActionStatus.IN_PROGRESS,
+            },
+            {
+                id: 'audit-demo-iso27001-action-2',
+                title: 'Collect SLA signatures',
+                owner: 'Legal',
+                dueDate: '2025-02-24',
+                status: AuditActionStatus.OPEN,
+            },
+            {
+                id: 'audit-demo-iso27001-action-3',
+                title: 'Update vendor register',
+                owner: 'Vendor',
+                dueDate: '2025-02-22',
+                status: AuditActionStatus.VERIFY,
+            },
+        ],
+    },
+    {
+        id: 'audit-demo-iso9001',
+        name: 'ISO 9001 Supplier Quality',
+        standard: 'ISO 9001',
+        type: 'External',
+        scope: 'Manufacturing sites + supplier onboarding',
+        owner: 'Audit Team',
+        status: AuditStatus.PLANNED,
+        startDate: '2025-03-03',
+        endDate: '2025-03-07',
+        checklist: [
+            {
+                id: 'audit-demo-iso9001-item-1',
+                title: 'Clause 7.2 Competence evidence',
+                clause: '7.2',
+                owner: 'HR',
+                status: AuditChecklistStatus.OBS,
+                notes: 'Need updated training matrix import',
+            },
+            {
+                id: 'audit-demo-iso9001-item-2',
+                title: 'Clause 8.4 Supplier evaluation',
+                clause: '8.4',
+                owner: 'Supply Chain',
+                status: AuditChecklistStatus.COMPLIANT,
+                notes: 'Approved vendor list ready for review',
+            },
+        ],
+        findings: [],
+        actions: [
+            {
+                id: 'audit-demo-iso9001-action-1',
+                title: 'Prep supplier scorecards',
+                owner: 'Supply Chain',
+                dueDate: '2025-02-28',
+                status: AuditActionStatus.OPEN,
+            },
+        ],
+    },
+];
+
 async function seedArchivePolicy() {
     return prisma.archivePolicy.upsert({
         where: { id: 'default-archive-policy' },
@@ -305,6 +511,13 @@ async function seedTenant(archivePolicyId: string) {
 }
 
 async function seedTemplates() {
+    const fs = require('fs');
+    const path = require('path');
+
+    // Load NS370 template from separate file
+    const ns370TemplatePath = path.join(__dirname, 'templates', 'ns370-compliance-template.json');
+    const ns370Schema = JSON.parse(fs.readFileSync(ns370TemplatePath, 'utf-8'));
+
     const templates = [
         {
             code: 'FDV_MAIN_V1',
@@ -369,6 +582,14 @@ async function seedTemplates() {
             metadata: {
                 tags: ['PED', 'Compliance'],
             },
+        },
+        {
+            code: 'NS370_COMPLIANCE',
+            title: ns370Schema.title,
+            version: ns370Schema.version,
+            description: ns370Schema.description,
+            schema: ns370Schema,
+            metadata: ns370Schema.metadata,
         },
     ];
 
@@ -695,6 +916,89 @@ async function seedDemoProject(tenantId: string, componentTypeMap: Map<string, s
     for (const edge of DEMO_EDGES) {
         await ensureNodeEdge(edge);
     }
+
+    return project;
+}
+
+async function seedAudits(tenantId: string, projectId: string) {
+    for (const auditSeed of DEMO_AUDITS) {
+        const audit = await prisma.audit.upsert({
+            where: { id: auditSeed.id },
+            update: {
+                name: auditSeed.name,
+                standard: auditSeed.standard,
+                type: auditSeed.type,
+                scope: auditSeed.scope,
+                owner: auditSeed.owner,
+                status: auditSeed.status ?? AuditStatus.PLANNED,
+                startDate: new Date(auditSeed.startDate),
+                endDate: new Date(auditSeed.endDate),
+                metadata: auditSeed.metadata ?? {},
+                projectId,
+            },
+            create: {
+                id: auditSeed.id,
+                tenantId,
+                projectId,
+                name: auditSeed.name,
+                standard: auditSeed.standard,
+                type: auditSeed.type,
+                scope: auditSeed.scope,
+                owner: auditSeed.owner,
+                status: auditSeed.status ?? AuditStatus.PLANNED,
+                startDate: new Date(auditSeed.startDate),
+                endDate: new Date(auditSeed.endDate),
+                metadata: auditSeed.metadata ?? {},
+            },
+        });
+
+        await prisma.auditChecklistItem.deleteMany({ where: { auditId: audit.id } });
+        if (auditSeed.checklist?.length) {
+            await prisma.auditChecklistItem.createMany({
+                data: auditSeed.checklist.map((item, index) => ({
+                    id: item.id ?? `${auditSeed.id}-checklist-${index}`,
+                    auditId: audit.id,
+                    clause: item.clause,
+                    title: item.title,
+                    owner: item.owner,
+                    status: item.status ?? AuditChecklistStatus.COMPLIANT,
+                    notes: item.notes,
+                    orderIndex: index,
+                })),
+            });
+        }
+
+        await prisma.auditFinding.deleteMany({ where: { auditId: audit.id } });
+        if (auditSeed.findings?.length) {
+            await prisma.auditFinding.createMany({
+                data: auditSeed.findings.map((finding, index) => ({
+                    id: finding.id ?? `${auditSeed.id}-finding-${index}`,
+                    auditId: audit.id,
+                    title: finding.title,
+                    severity: finding.severity ?? AuditFindingSeverity.MEDIUM,
+                    owner: finding.owner,
+                    dueDate: finding.dueDate ? new Date(finding.dueDate) : null,
+                    status: finding.status ?? AuditStatus.PLANNED,
+                    description: finding.description,
+                })),
+            });
+        }
+
+        await prisma.auditAction.deleteMany({ where: { auditId: audit.id } });
+        if (auditSeed.actions?.length) {
+            await prisma.auditAction.createMany({
+                data: auditSeed.actions.map((action, index) => ({
+                    id: action.id ?? `${auditSeed.id}-action-${index}`,
+                    auditId: audit.id,
+                    title: action.title,
+                    owner: action.owner,
+                    status: action.status ?? AuditActionStatus.OPEN,
+                    dueDate: action.dueDate ? new Date(action.dueDate) : null,
+                    description: action.description,
+                })),
+            });
+        }
+    }
 }
 
 async function createNodeWithRevision(
@@ -771,7 +1075,8 @@ async function main() {
     await seedTemplates();
     await seedRuleSets();
     const componentTypes = await seedComponentTypes();
-    await seedDemoProject(tenant.id, componentTypes);
+    const project = await seedDemoProject(tenant.id, componentTypes);
+    await seedAudits(tenant.id, project.id);
 }
 
 main()

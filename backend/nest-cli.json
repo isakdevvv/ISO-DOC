@@ -3,6 +3,16 @@
     "collection": "@nestjs/schematics",
     "sourceRoot": "src",
     "compilerOptions": {
-        "deleteOutDir": true
+        "deleteOutDir": true,
+        "assets": [
+            {
+                "include": "modules/project-docs/templates/**/*",
+                "outDir": "dist/modules/project-docs/templates"
+            },
+            {
+                "include": "modules/project-docs/prompts/**/*",
+                "outDir": "dist/modules/project-docs/prompts"
+            }
+        ]
     }
 }

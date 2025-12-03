@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { File as FileRecord, IngestionJob, IngestionJobStatus, IngestionJobType, Prisma } from '@prisma/client';
+import { File as FileRecord, IngestionJob, IngestionJobStatus, IngestionJobType, IngestionMode, LegalClass, Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import * as fs from 'fs/promises';
 
@@ -13,6 +13,8 @@ export interface IngestFilesInput {
     projectId?: string;
     nodeId?: string;
     source?: string;
+    legalClass?: LegalClass;
+    ingestionMode?: IngestionMode;
     files: Express.Multer.File[];
 }
 
@@ -37,6 +39,8 @@ interface PendingFileParams {
     size?: number;
     checksum?: string;
     source: string;
+    legalClass?: LegalClass;
+    ingestionMode?: IngestionMode;
 }
 
 interface PendingFileResult {
@@ -48,6 +52,11 @@ interface PendingFileResult {
 export class IngestionService {
     private readonly logger = new Logger(IngestionService.name);
     private readonly originalsBucket = 'original-files';
+    private readonly legalClassModeMap: Record<LegalClass, IngestionMode[]> = {
+        [LegalClass.A]: [IngestionMode.FULLTEXT],
+        [LegalClass.B]: [IngestionMode.FULLTEXT_INTERNAL_ONLY, IngestionMode.METADATA_ONLY],
+        [LegalClass.C]: [IngestionMode.METADATA_ONLY],
+    };
 
     constructor(
         private readonly prisma: PrismaService,
@@ -76,6 +85,8 @@ export class IngestionService {
                 mimeType: file.mimetype ?? 'application/octet-stream',
                 size: file.size,
                 source: input.source ?? 'UPLOAD',
+                legalClass: input.legalClass,
+                ingestionMode: input.ingestionMode,
             });
 
             await this.persistUploadedFile(pending.file, file);
@@ -111,6 +122,8 @@ export class IngestionService {
             size: request.size,
             checksum: request.checksum,
             source: request.source ?? 'UPLOAD',
+            legalClass: request.legalClass,
+            ingestionMode: request.ingestionMode,
         });
 
         const uploadPath = `/ingestion/upload/${pending.file.id}/content`;
@@ -293,6 +306,7 @@ export class IngestionService {
     private async createPendingFile(params: PendingFileParams): Promise<PendingFileResult> {
         const objectKey = this.buildObjectKey(params.tenantId, params.projectId, params.fileName);
         const storageKey = this.storage.buildStorageKey(this.originalsBucket, objectKey);
+        const classification = this.resolveClassification(params.legalClass, params.ingestionMode);
 
         const file = await this.prisma.file.create({
             data: {
@@ -306,6 +320,8 @@ export class IngestionService {
                 source: params.source,
                 storageKey,
                 status: 'PENDING_UPLOAD',
+                legalClass: classification.legalClass,
+                ingestionMode: classification.ingestionMode,
                 metadata: {
                     bucket: this.originalsBucket,
                 } as Prisma.JsonValue,
@@ -323,11 +339,30 @@ export class IngestionService {
                 metadata: {
                     phase: 'WAITING_UPLOAD',
                     source: params.source,
+                    legalClass: classification.legalClass,
+                    ingestionMode: classification.ingestionMode,
                 } as Prisma.JsonValue,
             },
         });
 
         return { file, job };
+    }
+
+    private resolveClassification(legalClass?: LegalClass, ingestionMode?: IngestionMode) {
+        const resolvedClass = legalClass ?? LegalClass.A;
+        const allowed = this.legalClassModeMap[resolvedClass] ?? [IngestionMode.FULLTEXT];
+        const resolvedMode = ingestionMode ?? allowed[0];
+
+        if (!allowed.includes(resolvedMode)) {
+            throw new BadRequestException(
+                `Ingestion mode ${resolvedMode} is not permitted for legal class ${resolvedClass}`,
+            );
+        }
+
+        return {
+            legalClass: resolvedClass,
+            ingestionMode: resolvedMode,
+        };
     }
 
     private buildObjectKey(tenantId: string, projectId: string | null | undefined, fileName: string) {

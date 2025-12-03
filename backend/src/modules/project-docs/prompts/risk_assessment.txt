@@ -1,0 +1,5 @@
+Produser en kort risikovurdering for CO₂-anlegg. Bruk NS-EN 378-1 perspektiv. Beskriv:
+- Scenarioer (lekkasje maskinrom, tap av strøm, feil på ventilasjon)
+- Sannsynlighet/konsekvens (tekstlig, ikke tall)
+- Tiltak/barrierer (gassalarmer, nødventilasjon, rutiner)
+Avslutt med anbefaling om videre oppfølging. Markdown, norske setninger, ingen kodeblokk.

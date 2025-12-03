@@ -12,6 +12,7 @@ export default function Sidebar() {
         { name: 'Dashboard', href: '/app/dashboard', icon: '📊', match: () => pathname === '/app/dashboard' && (!searchParams.get('tab') || searchParams.get('tab') === 'home') },
         { name: 'Tasks', href: '/app/tasks', icon: '✅', match: () => pathname.startsWith('/app/tasks') },
         { name: 'Projects', href: '/app/projects', icon: '🗂️', match: () => pathname.startsWith('/app/projects') },
+        { name: 'Audits', href: '/app/audits', icon: '🕵️', match: () => pathname.startsWith('/app/audits') },
         { name: 'Documents', href: '/app/documents', icon: '📁', match: () => pathname.startsWith('/app/documents') },
         { name: 'Compliance Workspace', href: '/app/dashboard?tab=compliance', icon: '⚡️', match: () => pathname === '/app/dashboard' && searchParams.get('tab') === 'compliance' },
         { name: 'Templates', href: '/app/dashboard?tab=templates', icon: '📝', match: () => pathname === '/app/dashboard' && searchParams.get('tab') === 'templates' },

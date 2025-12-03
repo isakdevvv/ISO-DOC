@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import Header from '@/app/components/Header';
 import ComplianceTab from '@/app/components/ComplianceTab';
 import TemplatesTab from '@/app/components/TemplatesTab';
@@ -37,7 +38,26 @@ function DashboardInner() {
 
     return (
         <div className="flex flex-col min-h-full bg-gray-50">
-            <Header />
+            <Header
+                title="Compliance Overview"
+                subtitle="Track ISO readiness, active audits, and non-conformities for your organizations."
+                actions={(
+                    <>
+                        <Link
+                            href="/app/documents"
+                            className="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 text-sm font-medium hover:border-gray-300"
+                        >
+                            Open documents
+                        </Link>
+                        <Link
+                            href="/app/audits"
+                            className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
+                        >
+                            Schedule audit
+                        </Link>
+                    </>
+                )}
+            />
             <main className="flex-1 p-8">
                 <div className="max-w-7xl mx-auto space-y-8 w-full">
                     {activeTab === 'home' && <HomeTab />}

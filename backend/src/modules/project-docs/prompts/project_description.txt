@@ -1,0 +1,6 @@
+Skriv en kort prosjektbeskrivelse for et Termoteam-prosjekt. Inkluder:
+- Kunde og lokasjon
+- Medium og hovedkomponenter (bruk generiske beskrivelser hvis ukjent)
+- Utført arbeid (ordrenummer/tilbudsreferanse hvis tilgjengelig)
+- Viktige datoer (commissioning, planlagt ferdig)
+Bruk norsk språk og maksimum 4 avsnitt. Returner som Markdown uten kodeblokker.

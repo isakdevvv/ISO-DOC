@@ -13,20 +13,35 @@ export class ProjectsService {
 
     async createProject(dto: CreateProjectDto, authTenantId?: string) {
         const tenantId = await this.resolveTenantId(dto.tenantId, authTenantId);
-        const facts = this.buildFacts(dto);
+        const customerName = dto.customerName ?? dto.clientName ?? null;
+        const siteAddress = dto.siteAddress ?? dto.address ?? null;
+        const commissionedInput = dto.commissioningDate ?? dto.commissionedAt ?? null;
+        const facts = this.buildFacts({
+            ...dto,
+            customerName: customerName ?? undefined,
+            address: siteAddress ?? undefined,
+            siteAddress: siteAddress ?? undefined,
+        });
 
         const project = await this.prisma.project.create({
             data: {
                 tenantId,
                 externalId: dto.externalId,
+                projectNumber: dto.projectNumber ?? null,
+                siteName: dto.siteName ?? null,
+                siteAddress,
+                orderNumber: dto.orderNumber ?? null,
+                offerNumber: dto.offerNumber ?? null,
+                installerCompany: dto.installerCompany ?? null,
+                projectManager: dto.projectManager ?? null,
                 name: dto.name,
-                clientName: dto.clientName,
-                address: dto.address,
+                clientName: customerName,
+                address: siteAddress,
                 medium: dto.medium,
                 psValue: dto.psValue ?? null,
                 tsValue: dto.tsValue ?? null,
                 volume: dto.volume ?? null,
-                commissionedAt: dto.commissionedAt ? new Date(dto.commissionedAt) : null,
+                commissionedAt: commissionedInput ? new Date(commissionedInput) : null,
                 decommissionedAt: dto.decommissionedAt ? new Date(dto.decommissionedAt) : null,
                 metadata: dto.metadata || {},
                 facts,
@@ -41,6 +56,9 @@ export class ProjectsService {
 
     async updateProject(id: string, dto: UpdateProjectDto, authTenantId?: string) {
         const project = await this.ensureProject(id, authTenantId);
+        const customerName = dto.customerName ?? dto.clientName ?? project.clientName ?? null;
+        const siteAddress = dto.siteAddress ?? dto.address ?? project.siteAddress ?? project.address ?? null;
+        const commissionedInput = dto.commissioningDate ?? dto.commissionedAt ?? undefined;
         const facts = this.buildFacts({
             ...dto,
             facts: dto.facts,
@@ -48,20 +66,37 @@ export class ProjectsService {
             tsValue: dto.tsValue ?? project.tsValue ?? undefined,
             volume: dto.volume ?? project.volume ?? undefined,
             medium: dto.medium ?? project.medium,
-            address: dto.address ?? project.address,
+            address: siteAddress ?? project.address ?? undefined,
+            siteAddress: siteAddress ?? project.siteAddress ?? undefined,
+            siteName: dto.siteName ?? project.siteName ?? undefined,
+            projectNumber: dto.projectNumber ?? project.projectNumber ?? undefined,
+            orderNumber: dto.orderNumber ?? project.orderNumber ?? undefined,
+            offerNumber: dto.offerNumber ?? project.offerNumber ?? undefined,
+            installerCompany: dto.installerCompany ?? project.installerCompany ?? undefined,
+            projectManager: dto.projectManager ?? project.projectManager ?? undefined,
+            customerName: customerName ?? undefined,
         });
 
         const updated = await this.prisma.project.update({
             where: { id },
             data: {
                 name: dto.name,
-                clientName: dto.clientName,
-                address: dto.address,
+                clientName: customerName,
+                address: siteAddress,
                 medium: dto.medium,
+                projectNumber: dto.projectNumber ?? project.projectNumber,
+                siteName: dto.siteName ?? project.siteName,
+                siteAddress,
+                orderNumber: dto.orderNumber ?? project.orderNumber,
+                offerNumber: dto.offerNumber ?? project.offerNumber,
+                installerCompany: dto.installerCompany ?? project.installerCompany,
+                projectManager: dto.projectManager ?? project.projectManager,
                 psValue: dto.psValue ?? project.psValue ?? null,
                 tsValue: dto.tsValue ?? project.tsValue ?? null,
                 volume: dto.volume ?? project.volume ?? null,
-                commissionedAt: dto.commissionedAt ? new Date(dto.commissionedAt) : project.commissionedAt,
+                commissionedAt: commissionedInput
+                    ? new Date(commissionedInput)
+                    : project.commissionedAt,
                 decommissionedAt: dto.decommissionedAt ? new Date(dto.decommissionedAt) : project.decommissionedAt,
                 metadata: dto.metadata ?? project.metadata,
                 facts,
@@ -241,13 +276,36 @@ export class ProjectsService {
         return tenant.id;
     }
 
-    private buildFacts(input: { facts?: Record<string, any>; medium?: string; psValue?: number; tsValue?: number; volume?: number; address?: string }) {
+    private buildFacts(input: {
+        facts?: Record<string, any>;
+        medium?: string;
+        psValue?: number;
+        tsValue?: number;
+        volume?: number;
+        address?: string;
+        siteAddress?: string;
+        siteName?: string;
+        projectNumber?: string;
+        orderNumber?: string;
+        offerNumber?: string;
+        installerCompany?: string;
+        projectManager?: string;
+        customerName?: string;
+    }) {
         return {
             medium: input.medium ?? null,
             psValue: input.psValue ?? null,
             tsValue: input.tsValue ?? null,
             volume: input.volume ?? null,
-            address: input.address ?? null,
+            address: input.siteAddress ?? input.address ?? null,
+            siteAddress: input.siteAddress ?? input.address ?? null,
+            siteName: input.siteName ?? null,
+            projectNumber: input.projectNumber ?? null,
+            orderNumber: input.orderNumber ?? null,
+            offerNumber: input.offerNumber ?? null,
+            installerCompany: input.installerCompany ?? null,
+            projectManager: input.projectManager ?? null,
+            customerName: input.customerName ?? null,
             ...(input.facts || {}),
         };
     }

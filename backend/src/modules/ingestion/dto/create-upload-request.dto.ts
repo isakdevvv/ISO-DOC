@@ -1,4 +1,5 @@
-import { IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import { IngestionMode, LegalClass } from '@prisma/client';
+import { IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 
 export class CreateUploadRequestDto {
     @IsOptional()
@@ -16,6 +17,14 @@ export class CreateUploadRequestDto {
     @IsOptional()
     @IsString()
     source?: string;
+
+    @IsOptional()
+    @IsEnum(LegalClass)
+    legalClass?: LegalClass;
+
+    @IsOptional()
+    @IsEnum(IngestionMode)
+    ingestionMode?: IngestionMode;
 
     @IsString()
     @IsNotEmpty()

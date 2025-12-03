@@ -8,6 +8,7 @@ import {
     fetchLatestRequirements,
     fetchRuleConflicts,
     runRuleEngine,
+    fetchProjects,
 } from '@/lib/api';
 
 const mockPush = vi.fn();
@@ -18,6 +19,7 @@ vi.mock('@/lib/api', () => ({
     fetchRuleSets: vi.fn(),
     fetchLatestRequirements: vi.fn(),
     fetchRuleConflicts: vi.fn(),
+    fetchProjects: vi.fn(),
     runRuleEngine: vi.fn(),
     searchDocuments: vi.fn(),
 }));
@@ -30,6 +32,16 @@ describe('GapAnalysisPage', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+        (fetchProjects as any).mockResolvedValue([{
+            id: 'project-123',
+            name: 'Demo Project',
+            tenantId: 'tenant-1',
+            tasks: [],
+            nodes: [],
+            documents: [],
+            createdAt: '',
+            updatedAt: '',
+        }]);
     });
 
     afterEach(() => {
@@ -85,7 +97,7 @@ describe('GapAnalysisPage', () => {
         fireEvent.click(button);
 
         await waitFor(() => {
-            expect(runRuleEngine).toHaveBeenCalledWith('default-project-id', { ruleSetIds: ['rs-1'] });
+            expect(runRuleEngine).toHaveBeenCalledWith('project-123', { ruleSetIds: ['rs-1'] });
         });
     });
 });

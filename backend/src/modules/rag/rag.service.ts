@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { IngestionMode, LegalClass, Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
 
 import { AiClientFactory } from '../../common/ai/ai-client.factory';
@@ -47,6 +47,8 @@ export interface RagChunkResult {
     orderIndex: number;
     sourceType?: string;
     sourceId?: string;
+    legalClass: LegalClass;
+    ingestionMode: IngestionMode;
     metadata?: Record<string, any>;
 }
 
@@ -72,6 +74,18 @@ export class RagService {
     private readonly vectorWeight = this.normalizeWeight(process.env.RAG_HYBRID_VECTOR_WEIGHT, 0.65);
     private readonly lexicalWeight = this.normalizeWeight(process.env.RAG_HYBRID_LEXICAL_WEIGHT, 0.35);
     private readonly fullTextConfig = this.normalizeRegconfig(process.env.RAG_FTS_DICTIONARY);
+    private readonly legalClassValues = new Set<LegalClass>(Object.values(LegalClass));
+    private readonly ingestionModeValues = new Set<IngestionMode>(Object.values(IngestionMode));
+    private readonly defaultAllowedLegalClasses = this.parseEnumList(
+        process.env.RAG_DEFAULT_LEGAL_CLASSES,
+        Object.values(LegalClass),
+        [LegalClass.A],
+    );
+    private readonly defaultAllowedIngestionModes = this.parseEnumList(
+        process.env.RAG_DEFAULT_INGESTION_MODES,
+        Object.values(IngestionMode),
+        [IngestionMode.FULLTEXT],
+    );
 
     constructor(
         private readonly prisma: PrismaService,
@@ -92,6 +106,8 @@ export class RagService {
 
         const minScore = this.normalizeScore(dto.minScore);
         const defaultTopK = this.normalizeTopK(dto.defaultTopK) ?? this.defaultTopK;
+        const allowedLegalClasses = this.resolveLegalClassFilter(dto.allowedLegalClasses);
+        const allowedIngestionModes = this.resolveIngestionModeFilter(dto.allowedIngestionModes);
 
         const fields = await Promise.all(
             dto.fields.map((field) =>
@@ -99,6 +115,8 @@ export class RagService {
                     defaultTopK,
                     minScore,
                     requirementsModel: dto.requirementsModel,
+                    allowedLegalClasses,
+                    allowedIngestionModes,
                 }),
             ),
         );
@@ -112,7 +130,13 @@ export class RagService {
     private async queryField(
         projectId: string,
         field: RagFieldQueryDto,
-        options: { defaultTopK: number; minScore: number; requirementsModel?: Record<string, any> },
+        options: {
+            defaultTopK: number;
+            minScore: number;
+            requirementsModel?: Record<string, any>;
+            allowedLegalClasses: LegalClass[];
+            allowedIngestionModes: IngestionMode[];
+        },
     ): Promise<RagFieldResult> {
         const query = this.buildFieldQuery(field, options.requirementsModel);
         const topK = this.normalizeTopK(field.topK) ?? options.defaultTopK;
@@ -137,7 +161,8 @@ export class RagService {
             embedding,
             limit: oversample,
         });
-        const filteredRows = this.filterByPreferredSources(rows, field.preferredSources)
+        const legalRows = this.filterByLegalAccess(rows, options.allowedLegalClasses, options.allowedIngestionModes);
+        const filteredRows = this.filterByPreferredSources(legalRows, field.preferredSources)
             .filter((row) => Number(row.similarity) >= options.minScore)
             .slice(0, topK);
         const chunks = filteredRows.map((row) => this.mapRowToChunk(row));
@@ -283,6 +308,25 @@ export class RagService {
         return typeof limit === 'number' ? combined.slice(0, limit) : combined;
     }
 
+    private filterByLegalAccess(
+        rows: HybridSegmentRow[],
+        allowedLegalClasses: LegalClass[],
+        allowedIngestionModes: IngestionMode[],
+    ) {
+        if (!rows.length) {
+            return rows;
+        }
+        const classSet = new Set(allowedLegalClasses);
+        const modeSet = new Set(allowedIngestionModes);
+
+        return rows.filter((row) => {
+            const metadata = (row.metadata || {}) as Record<string, any>;
+            const legalClass = this.normalizeLegalClassValue(metadata?.legalClass);
+            const ingestionMode = this.normalizeIngestionModeValue(metadata?.ingestionMode);
+            return classSet.has(legalClass) && modeSet.has(ingestionMode);
+        });
+    }
+
     private filterByPreferredSources(rows: HybridSegmentRow[], preferred?: string[]) {
         if (!preferred?.length) {
             return rows;
@@ -298,6 +342,8 @@ export class RagService {
 
     private mapRowToChunk(row: HybridSegmentRow): RagChunkResult {
         const metadata = (row.metadata || {}) as Record<string, any>;
+        const legalClass = this.normalizeLegalClassValue(metadata?.legalClass);
+        const ingestionMode = this.normalizeIngestionModeValue(metadata?.ingestionMode);
         return {
             segmentId: row.segmentId,
             nodeId: row.nodeId,
@@ -309,6 +355,8 @@ export class RagService {
             orderIndex: row.orderIndex,
             sourceType: metadata?.sourceType || metadata?.source_type,
             sourceId: metadata?.sourceId || metadata?.source_id,
+            legalClass,
+            ingestionMode,
             metadata,
         };
     }
@@ -408,13 +456,22 @@ export class RagService {
         });
     }
 
-    async searchProjectSegments(options: { projectId: string; query: string; limit?: number; nodeId?: string }) {
+    async searchProjectSegments(options: {
+        projectId: string;
+        query: string;
+        limit?: number;
+        nodeId?: string;
+        allowedLegalClasses?: LegalClass[];
+        allowedIngestionModes?: IngestionMode[];
+    }) {
         const trimmedQuery = options.query?.trim();
         if (!trimmedQuery) {
             return [];
         }
 
         const limit = Math.min(options.limit ?? this.defaultTopK, this.maxTopK);
+        const allowedLegalClasses = this.resolveLegalClassFilter(options.allowedLegalClasses);
+        const allowedIngestionModes = this.resolveIngestionModeFilter(options.allowedIngestionModes);
         const embedding = await this.embeddingsClient.embedQuery(trimmedQuery);
         const rows = await this.retrieveHybridSegments({
             projectId: options.projectId,
@@ -423,7 +480,8 @@ export class RagService {
             limit,
             filters: { nodeId: options.nodeId },
         });
-        return rows.slice(0, limit).map((row) => this.mapRowToChunk(row));
+        const legalRows = this.filterByLegalAccess(rows, allowedLegalClasses, allowedIngestionModes);
+        return legalRows.slice(0, limit).map((row) => this.mapRowToChunk(row));
     }
 
     private normalizeWeight(rawValue: string | undefined, fallback: number) {
@@ -458,5 +516,57 @@ export class RagService {
             return 1;
         }
         return value;
+    }
+
+    private resolveLegalClassFilter(input?: LegalClass[]) {
+        const sanitized = (input ?? []).filter((value): value is LegalClass => this.legalClassValues.has(value));
+        if (sanitized.length) {
+            return Array.from(new Set(sanitized));
+        }
+        return [...this.defaultAllowedLegalClasses];
+    }
+
+    private resolveIngestionModeFilter(input?: IngestionMode[]) {
+        const sanitized = (input ?? []).filter((value): value is IngestionMode => this.ingestionModeValues.has(value));
+        if (sanitized.length) {
+            return Array.from(new Set(sanitized));
+        }
+        return [...this.defaultAllowedIngestionModes];
+    }
+
+    private normalizeLegalClassValue(value: unknown): LegalClass {
+        if (typeof value === 'string') {
+            const normalized = value.toUpperCase() as LegalClass;
+            if (this.legalClassValues.has(normalized)) {
+                return normalized;
+            }
+        }
+        return LegalClass.A;
+    }
+
+    private normalizeIngestionModeValue(value: unknown): IngestionMode {
+        if (typeof value === 'string') {
+            const normalized = value.toUpperCase() as IngestionMode;
+            if (this.ingestionModeValues.has(normalized)) {
+                return normalized;
+            }
+        }
+        return IngestionMode.FULLTEXT;
+    }
+
+    private parseEnumList<T extends string>(raw: string | undefined, allowedValues: readonly T[], fallback: T[]): T[] {
+        if (!raw) {
+            return [...fallback];
+        }
+        const allowed = new Set(allowedValues.map((value) => value.toString().toUpperCase()));
+        const parsed = raw
+            .split(',')
+            .map((value) => value.trim().toUpperCase())
+            .filter((value) => allowed.has(value));
+
+        if (!parsed.length) {
+            return [...fallback];
+        }
+        return Array.from(new Set(parsed)) as T[];
     }
 }

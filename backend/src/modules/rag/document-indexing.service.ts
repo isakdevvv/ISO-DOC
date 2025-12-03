@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { IngestionMode, LegalClass, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 
 import { DocumentProcessingService } from '@/common/processing/document-processing.service';
@@ -29,6 +29,15 @@ export class DocumentIndexingService {
     async indexPlainTextVariant(params: IndexPlainTextParams) {
         if (!params.nodeId) {
             this.logger.debug(`Skipping indexing for file ${params.fileId} because it is not linked to a node`);
+            return;
+        }
+
+        const classification = await this.prisma.file.findUnique({
+            where: { id: params.fileId },
+            select: { legalClass: true, ingestionMode: true },
+        });
+        if (!classification) {
+            this.logger.warn(`Skipping indexing for file ${params.fileId} because record was not found`);
             return;
         }
 
@@ -71,6 +80,8 @@ export class DocumentIndexingService {
                 fileName: params.fileName,
                 projectId: params.projectId,
                 tenantId: params.tenantId,
+                legalClass: classification.legalClass,
+                ingestionMode: classification.ingestionMode,
                 contents,
                 vectors,
             });
@@ -111,6 +122,8 @@ export class DocumentIndexingService {
         fileName: string;
         projectId?: string | null;
         tenantId: string;
+        legalClass: LegalClass;
+        ingestionMode: IngestionMode;
         contents: string[];
         vectors: number[][];
     }) {
@@ -120,6 +133,8 @@ export class DocumentIndexingService {
             fileName: params.fileName,
             projectId: params.projectId,
             tenantId: params.tenantId,
+            legalClass: params.legalClass,
+            ingestionMode: params.ingestionMode,
         };
 
         for (let index = 0; index < params.contents.length; index++) {

@@ -269,13 +269,18 @@ export class RuleEngineService {
         });
     }
 
-    async listRuleSets(projectId?: string) {
+    async listRuleSets(projectId?: string, forceRefresh = false) {
         const cacheKey = `rulesets:${projectId || 'global'}`;
-        const cached = await this.cacheManager.get<RuleSetWithRules[]>(cacheKey);
-        if (cached) {
-            this.logger.log(`Cache hit for ${cacheKey}`);
-            return cached;
+        if (forceRefresh) {
+            await this.invalidateRuleSetCache(projectId);
+        } else {
+            const cached = await this.cacheManager.get<RuleSetWithRules[]>(cacheKey);
+            if (cached) {
+                this.logger.log(`Cache hit for ${cacheKey}`);
+                return cached;
+            }
         }
+
         this.logger.log(`Cache miss for ${cacheKey}`);
 
         const where: Prisma.RuleSetWhereInput = {
@@ -303,6 +308,17 @@ export class RuleEngineService {
 
         await this.cacheManager.set(cacheKey, result, 3600000); // 1 hour
         return result;
+    }
+
+    async invalidateRuleSetCache(projectId?: string) {
+        const keys = new Set<string>();
+        keys.add('rulesets:global');
+        if (projectId) {
+            keys.add(`rulesets:${projectId}`);
+        }
+        for (const key of keys) {
+            await this.cacheManager.del(key);
+        }
     }
 
     private buildFacts(project: ProjectWithFacts, overrides?: Record<string, any>) {

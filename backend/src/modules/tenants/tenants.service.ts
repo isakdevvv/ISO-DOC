@@ -6,9 +6,14 @@ import { UpdateTenantDto } from './dto/update-tenant.dto';
 export class TenantsService {
     constructor(private readonly prisma: PrismaService) { }
 
-    async getTenant(id: string) {
-        const tenant = await this.prisma.tenant.findUnique({
-            where: { id },
+    async getTenant(idOrSlug: string) {
+        const tenant = await this.prisma.tenant.findFirst({
+            where: {
+                OR: [
+                    { id: idOrSlug },
+                    { slug: idOrSlug },
+                ],
+            },
         });
         if (!tenant) {
             throw new NotFoundException('Tenant not found');

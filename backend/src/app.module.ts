@@ -16,7 +16,10 @@ import { TasksModule } from './modules/tasks/tasks.module';
 import { ApiKeysModule } from './modules/api-keys/api-keys.module';
 import { PublicApiModule } from './modules/public-api/public-api.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
+import { KiuvaModule } from './modules/kiuva/kiuva.module';
 import { DatabaseModule } from './database.module';
+import { ProjectDocsModule } from './modules/project-docs/project-docs.module';
+import { AuditsModule } from './modules/audits/audits.module';
 
 @Module({
     imports: [
@@ -39,6 +42,9 @@ import { DatabaseModule } from './database.module';
         ApiKeysModule,
         PublicApiModule,
         TenantsModule,
+        KiuvaModule,
+        ProjectDocsModule,
+        AuditsModule,
     ],
     controllers: [],
     providers: [

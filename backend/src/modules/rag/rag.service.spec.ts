@@ -1,3 +1,5 @@
+import { IngestionMode, LegalClass } from '@prisma/client';
+
 import { RagService } from './rag.service';
 
 describe('RagService helpers', () => {
@@ -45,5 +47,19 @@ describe('RagService helpers', () => {
 
         expect(filtered).toHaveLength(1);
         expect(filtered[0].metadata.sourceType).toBe('rule');
+    });
+
+    it('filters rows by legal class and ingestion mode', () => {
+        const filterByLegalAccess = (service as any).filterByLegalAccess.bind(service);
+        const rows = [
+            { metadata: { legalClass: 'A', ingestionMode: 'FULLTEXT' } },
+            { metadata: { legalClass: 'B', ingestionMode: 'FULLTEXT_INTERNAL_ONLY' } },
+            { metadata: { legalClass: 'C', ingestionMode: 'METADATA_ONLY' } },
+        ];
+
+        const filtered = filterByLegalAccess(rows, [LegalClass.A], [IngestionMode.FULLTEXT]);
+
+        expect(filtered).toHaveLength(1);
+        expect(filtered[0].metadata.legalClass).toBe('A');
     });
 });

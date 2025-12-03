@@ -1,0 +1,1 @@
+Skriv en kort README for mappen «10_Vedlegg». Forklar hvilke typer dokumenter som bør lagres her: samsvarserklæringer, trykkprøver, FDV fra produsent, sjekklister osv. Legg inn punktliste med anbefalt struktur og påminnelse om lisens/konfidensialitet. Norsk språk.
